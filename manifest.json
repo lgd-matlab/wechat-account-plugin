@@ -1,0 +1,11 @@
+{
+	"id": "wewe-rss",
+	"name": "WeWe RSS",
+	"version": "0.1.0",
+	"minAppVersion": "1.4.0",
+	"description": "Subscribe to WeChat public accounts and sync articles as notes. Full-featured RSS reader with embedded backend.",
+	"author": "Converted from WeWe RSS by cooderl",
+	"authorUrl": "https://github.com/cooderl/wewe-rss",
+	"fundingUrl": "https://paypal.me/cooderl",
+	"isDesktopOnly": true
+}
