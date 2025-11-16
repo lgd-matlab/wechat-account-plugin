@@ -11,8 +11,7 @@ lerna-debug.log*
 node_modules/
 
 # Build output
-main.js
-*.js.map
+# main.js and *.js.map are needed for plugin distribution
 .obsidian/
 
 # OS
