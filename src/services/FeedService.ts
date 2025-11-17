@@ -26,8 +26,18 @@ export class FeedService {
 		try {
 			logger.info('Subscribing to feed:', wxsLink);
 
-			// Get MP info from share link
-			const mpInfoList = await this.apiClient.getMpInfo(wxsLink);
+			// Get an available account for authentication
+			const account = await this.plugin.accountService.getAvailableAccount();
+			if (!account) {
+				throw new Error('Please add a WeChat account before subscribing to feeds. Go to Settings > WeWe RSS > Add Account.');
+			}
+
+			// Get MP info from share link with authentication
+			const mpInfoList = await this.apiClient.getMpInfoWithAuth(
+				wxsLink,
+				account.id.toString(),
+				account.cookie
+			);
 
 			if (!mpInfoList || mpInfoList.length === 0) {
 				throw new Error('Failed to get MP info from share link');
@@ -40,12 +50,6 @@ export class FeedService {
 			if (existingFeed) {
 				logger.info('Feed already exists:', mpInfo.name);
 				return existingFeed;
-			}
-
-			// Get an available account for the feed
-			const account = await this.plugin.accountService.getAvailableAccount();
-			if (!account) {
-				throw new Error('No available accounts to subscribe to feed');
 			}
 
 			// Create feed in database
