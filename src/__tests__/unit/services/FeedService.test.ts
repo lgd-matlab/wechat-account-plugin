@@ -144,7 +144,7 @@ describe('FeedService', () => {
 			expect(result).toBe(mockGetMpArticlesResponsePage1.length);
 			expect(mockApiClient.getMpArticles).toHaveBeenCalledWith(
 				sampleFeed1.feedId,
-				sampleAccount1.id.toString(),
+				sampleAccount1.id!.toString(),
 				sampleAccount1.cookie,
 				1
 			);
@@ -226,7 +226,7 @@ describe('FeedService', () => {
 			expect(result).toBe(mockGetMpArticlesResponsePage1.length);
 			expect(mockApiClient.getMpArticles).toHaveBeenCalledWith(
 				sampleFeed1.feedId,
-				sampleAccount1.id.toString(),
+				sampleAccount1.id!.toString(),
 				sampleAccount1.cookie,
 				1
 			);

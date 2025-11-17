@@ -270,7 +270,7 @@ describe('ArticleRepository', () => {
 
 		it('should respect limit parameter', () => {
 			insertArticle(db, sampleArticleUnsynced);
-			insertArticle(db, { ...sampleArticleUnsynced, id: 'unsynced2', url: 'http://test2.com' });
+			insertArticle(db, { ...sampleArticleUnsynced, id: 2, url: 'http://test2.com' });
 
 			const articles = repository.findUnsynced(1);
 
@@ -303,7 +303,7 @@ describe('ArticleRepository', () => {
 			insertArticle(db, {
 				...sampleArticleUnsynced,
 				url: 'http://test2.com',
-				feedId: sampleFeed2.id,
+				feed_id: sampleFeed2.id,
 			});
 
 			const articles = repository.findUnsyncedByFeed(sampleFeed2.id, 1);
@@ -335,7 +335,7 @@ describe('ArticleRepository', () => {
 
 		it('should order by published date (newest first)', () => {
 			const older = createSampleArticle({ published_at: 1000 });
-			const newer = createSampleArticle({ published_at: 2000, id: 'newer', url: 'http://newer.com' });
+			const newer = createSampleArticle({ published_at: 2000, id: 2, url: 'http://newer.com' });
 
 			insertArticle(db, older);
 			insertArticle(db, newer);
@@ -563,7 +563,7 @@ describe('ArticleRepository', () => {
 			const recentSynced = createSampleArticle({
 				published_at: Date.now() - 10 * 24 * 60 * 60 * 1000, // 10 days ago
 				synced: 1,
-				id: 'recent',
+				id: 2,
 				url: 'http://recent.com',
 			});
 

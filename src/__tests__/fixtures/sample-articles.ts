@@ -320,3 +320,26 @@ export function createSampleArticle(overrides?: Partial<ArticleFixture>): Articl
 		...overrides,
 	};
 }
+
+/**
+ * Convert ArticleFixture (database format) to Article (domain model)
+ *
+ * Transforms snake_case properties to camelCase and converts types
+ */
+export function fixtureToArticle(fixture: ArticleFixture): Article {
+	return {
+		id: fixture.id!,
+		feedId: fixture.feed_id,
+		title: fixture.title,
+		content: fixture.content,
+		contentHtml: fixture.content_html,
+		url: fixture.url,
+		publishedAt: fixture.published_at,
+		synced: fixture.synced === 1,  // Convert number (0/1) → boolean
+		noteId: fixture.note_id ?? undefined,
+		createdAt: fixture.created_at
+	};
+}
+
+// Import Article type for conversion helper
+import type { Article } from '../../types';

@@ -4,7 +4,7 @@
  */
 
 import { NoteCreator } from '../../../services/NoteCreator';
-import { sampleArticle1, sampleArticle2, sampleArticle3 } from '../../fixtures/sample-articles';
+import { sampleArticle1, sampleArticle2, sampleArticle3, fixtureToArticle } from '../../fixtures/sample-articles';
 import { sampleFeed1, sampleFeed2 } from '../../fixtures/sample-feeds';
 import { Article, Feed } from '../../../types';
 import { MockFile, MockFolder } from '../../mocks/obsidian';
@@ -252,7 +252,7 @@ tags: {{tags}}
 		});
 
 		it('should handle articles with missing feed', async () => {
-			const articles = [{ ...sampleArticle1, id: 1, feedId: 999 } as Article];
+			const articles = [fixtureToArticle({ ...sampleArticle1, id: 1, feed_id: 999 })];
 			const feedsMap = new Map<number, Feed>();
 
 			const result = await noteCreator.createNotesFromArticles(articles, feedsMap);
@@ -305,11 +305,11 @@ tags: {{tags}}
 		});
 
 		it('should sanitize article title in filename', () => {
-			const article = {
+			const article = fixtureToArticle({
 				...sampleArticle1,
 				id: 1,
 				title: 'Title/With\\Invalid|Chars<>',
-			} as Article;
+			});
 			const feed = { ...sampleFeed1, id: 1 } as Feed;
 
 			const path = (noteCreator as any).generateNotePath(article, feed, 'WeWe RSS');
@@ -326,12 +326,12 @@ tags: {{tags}}
 		it('should replace template variables', () => {
 			const template = '# {{title}}\nFeed: {{feedName}}\nPublished: {{publishedAt}}\n{{content}}';
 
-			const article = {
+			const article = fixtureToArticle({
 				...sampleArticle1,
 				id: 1,
 				title: 'Test Title',
 				content: 'Test content',
-			} as Article;
+			});
 
 			const metadata = {
 				title: article.title,
@@ -666,7 +666,7 @@ tags: {{tags}}
 			mockVault.create.mockResolvedValue({ path: 'test.md' });
 
 			const longTitle = 'A'.repeat(300);
-			const article = { ...sampleArticle1, id: 1, title: longTitle } as Article;
+			const article = fixtureToArticle({ ...sampleArticle1, id: 1, title: longTitle });
 			const feed = { ...sampleFeed1, id: 1 } as Feed;
 
 			const result = await noteCreator.createNoteFromArticle(article, feed);
@@ -679,7 +679,7 @@ tags: {{tags}}
 			mockVault.getAbstractFileByPath.mockReturnValue(null);
 			mockVault.create.mockResolvedValue({ path: 'test.md' });
 
-			const article = { ...sampleArticle1, id: 1, title: '测试文章 🚀' } as Article;
+			const article = fixtureToArticle({ ...sampleArticle1, id: 1, title: '测试文章 🚀' });
 			const feed = { ...sampleFeed1, id: 1, title: '中文Feed' } as Feed;
 
 			const result = await noteCreator.createNoteFromArticle(article, feed);
