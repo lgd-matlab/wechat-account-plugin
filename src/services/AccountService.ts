@@ -62,10 +62,15 @@ export class AccountService {
 			const result = await this.apiClient.getLoginResult(uuid);
 
 			if (result.token && result.vid && result.username) {
-				// Login successful - create account in database
+				// Login successful - store both vid and token as JSON
+				const credentials = JSON.stringify({
+					vid: result.vid,
+					token: result.token
+				});
+
 				const account = await this.plugin.databaseService.accounts.create(
 					result.username,
-					result.token
+					credentials
 				);
 
 				logger.info('Account created successfully:', account.name);

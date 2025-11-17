@@ -20,6 +20,28 @@ export class FeedService {
 	}
 
 	/**
+	 * Parse account credentials from cookie field
+	 * Supports both new JSON format and legacy token-only format
+	 */
+	private parseCredentials(cookie: string): { vid: number; token: string } {
+		try {
+			// Try parsing as JSON (new format)
+			const credentials = JSON.parse(cookie);
+			if (credentials.vid && credentials.token) {
+				return credentials;
+			}
+		} catch (e) {
+			// Not JSON or invalid format
+		}
+
+		// Legacy format (token only) or invalid
+		throw new Error(
+			'Account credentials are in old format or invalid. ' +
+			'Please remove this account and add it again by scanning the QR code in Settings > WeWe RSS > Accounts.'
+		);
+	}
+
+	/**
 	 * Subscribe to a WeChat public account via share link
 	 */
 	async subscribeFeed(wxsLink: string): Promise<Feed> {
@@ -32,11 +54,14 @@ export class FeedService {
 				throw new Error('Please add a WeChat account before subscribing to feeds. Go to Settings > WeWe RSS > Add Account.');
 			}
 
+			// Parse credentials to get vid and token
+			const credentials = this.parseCredentials(account.cookie);
+
 			// Get MP info from share link with authentication
 			const mpInfoList = await this.apiClient.getMpInfoWithAuth(
 				wxsLink,
-				account.id.toString(),
-				account.cookie
+				credentials.vid.toString(),
+				credentials.token
 			);
 
 			if (!mpInfoList || mpInfoList.length === 0) {
@@ -91,6 +116,9 @@ export class FeedService {
 				throw new Error('Feed account not found');
 			}
 
+			// Parse credentials to get vid and token
+			const credentials = this.parseCredentials(account.cookie);
+
 			let totalArticles = 0;
 			let page = 1;
 
@@ -98,8 +126,8 @@ export class FeedService {
 				try {
 					const articles = await this.apiClient.getMpArticles(
 						mpId,
-						account.id.toString(),
-						account.cookie,
+						credentials.vid.toString(),
+						credentials.token,
 						page
 					);
 
@@ -166,11 +194,14 @@ export class FeedService {
 				throw new Error('Feed account not found');
 			}
 
+			// Parse credentials to get vid and token
+			const credentials = this.parseCredentials(account.cookie);
+
 			// Fetch first page of articles
 			const articles = await this.apiClient.getMpArticles(
 				feed.feedId,
-				account.id.toString(),
-				account.cookie,
+				credentials.vid.toString(),
+				credentials.token,
 				1
 			);
 
