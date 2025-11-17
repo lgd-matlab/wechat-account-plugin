@@ -9,6 +9,7 @@ import {
 	GetMpArticlesResponse,
 	ApiError,
 	ApiErrorCode,
+	HealthCheckResponse,
 } from './types';
 
 /**
@@ -22,6 +23,56 @@ export class WeChatApiClient {
 
 	constructor(platformUrl: string) {
 		this.baseUrl = platformUrl;
+	}
+
+	/**
+	 * Check API health status
+	 * Attempts to reach health endpoint before initiating login flow
+	 */
+	async checkHealth(): Promise<boolean> {
+		try {
+			logger.info('Checking API health...');
+
+			// Try common health endpoint patterns
+			const healthUrls = [
+				`${this.baseUrl}/health`,
+				`${this.baseUrl}/api/health`,
+				`${this.baseUrl}/api/v2/health`
+			];
+
+			for (const url of healthUrls) {
+				try {
+					const response = await this.request<HealthCheckResponse>(
+						{ url, method: 'GET' },
+						5000 // 5 second timeout
+					);
+
+					if (response && (response.status === 'ok' || response.status === 'degraded')) {
+						logger.info('API health check passed:', url);
+						return true;
+					}
+				} catch (error) {
+					// Try next endpoint
+					continue;
+				}
+			}
+
+			// If all health endpoints fail, try a simple ping to base URL
+			try {
+				await this.request<any>(
+					{ url: this.baseUrl, method: 'HEAD' },
+					3000
+				);
+				logger.info('Base URL reachable (no health endpoint found)');
+				return true; // Server is up even if no health endpoint
+			} catch (error) {
+				logger.warn('API health check failed:', error);
+				return false;
+			}
+		} catch (error) {
+			logger.error('Health check error:', error);
+			return false;
+		}
 	}
 
 	/**
@@ -46,7 +97,7 @@ export class WeChatApiClient {
 
 	/**
 	 * Check login result by UUID
-	 * Long-polling request (120s timeout)
+	 * Long-polling request (120s timeout) with retry logic
 	 */
 	async getLoginResult(uuid: string): Promise<GetLoginResultResponse> {
 		try {
@@ -55,7 +106,7 @@ export class WeChatApiClient {
 			const response = await this.request<GetLoginResultResponse>({
 				url: `${this.baseUrl}/api/v2/login/platform/${uuid}`,
 				method: 'GET',
-			}, 120000); // 120 second timeout for long-polling
+			}, 120000, undefined, { maxRetries: 2, backoffMs: 2000 }); // Retry with exponential backoff
 
 			if (response.token && response.vid) {
 				logger.info('Login successful:', response.username);
@@ -155,11 +206,13 @@ export class WeChatApiClient {
 
 	/**
 	 * Generic request wrapper using Obsidian's requestUrl
+	 * Supports retry logic with exponential backoff for server errors
 	 */
 	private async request<T>(
 		config: RequestUrlParam,
 		timeout?: number,
-		params?: Record<string, string>
+		params?: Record<string, string>,
+		retryOptions?: { maxRetries?: number; backoffMs?: number }
 	): Promise<T> {
 		// Add query parameters if provided
 		if (params) {
@@ -172,18 +225,80 @@ export class WeChatApiClient {
 			config.headers = {};
 		}
 
-		try {
-			const response: RequestUrlResponse = await requestUrl(config);
+		const maxRetries = retryOptions?.maxRetries ?? 0;
+		const backoffMs = retryOptions?.backoffMs ?? 1000;
 
-			if (response.status >= 200 && response.status < 300) {
-				return response.json as T;
-			} else {
-				throw new Error(`HTTP ${response.status}: ${response.text}`);
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			try {
+				logger.debug('API Request:', {
+					url: config.url,
+					method: config.method,
+					attempt: attempt + 1,
+					maxRetries: maxRetries + 1
+				});
+
+				const response: RequestUrlResponse = await requestUrl(config);
+
+				if (response.status >= 200 && response.status < 300) {
+					logger.debug('API Request Success:', {
+						url: config.url,
+						status: response.status
+					});
+					return response.json as T;
+				} else {
+					throw new Error(`HTTP ${response.status}: ${response.text}`);
+				}
+			} catch (error: any) {
+				const isLastAttempt = attempt === maxRetries;
+				const isRetryable = this.isRetryableError(error);
+
+				logger.error('API Request Failed:', {
+					url: config.url,
+					method: config.method,
+					attempt: attempt + 1,
+					maxRetries: maxRetries + 1,
+					error: error.message,
+					isRetryable,
+					isLastAttempt
+				});
+
+				if (!isLastAttempt && isRetryable) {
+					const delayMs = backoffMs * Math.pow(2, attempt); // Exponential backoff
+					logger.info(`Retrying in ${delayMs}ms...`);
+					await this.sleep(delayMs);
+					continue;
+				}
+
+				// Final attempt or non-retryable error
+				throw error;
 			}
-		} catch (error: any) {
-			// Re-throw for error handling
-			throw error;
 		}
+
+		// Should never reach here
+		throw new Error('Request failed: max retries exceeded');
+	}
+
+	/**
+	 * Check if error is retryable (5xx server errors)
+	 */
+	private isRetryableError(error: any): boolean {
+		const errorMessage = error.message || error.toString();
+		const statusMatch = errorMessage.match(/HTTP (\d+)/);
+
+		if (statusMatch) {
+			const status = parseInt(statusMatch[1], 10);
+			// Retry on 500, 502, 503, 504 (server errors)
+			return status >= 500 && status <= 504;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Sleep utility for retry delays
+	 */
+	private sleep(ms: number): Promise<void> {
+		return new Promise(resolve => setTimeout(resolve, ms));
 	}
 
 	/**
@@ -191,6 +306,35 @@ export class WeChatApiClient {
 	 */
 	private handleError(error: any, accountId?: string): ApiError {
 		const errorMessage = error.message || error.toString();
+
+		// Extract HTTP status code
+		const statusMatch = errorMessage.match(/HTTP (\d+)/);
+		const status = statusMatch ? statusMatch[1] : null;
+
+		// Handle server errors (5xx) specifically
+		if (status === '500') {
+			return {
+				code: ApiErrorCode.INTERNAL_ERROR,
+				message: `Server error (HTTP 500). The WeChat Reading platform (${this.baseUrl}) is experiencing issues. Please try again later or check if the server is operational.`,
+				details: error,
+			};
+		}
+
+		if (status === '502') {
+			return {
+				code: ApiErrorCode.BAD_GATEWAY,
+				message: `Bad gateway error (HTTP 502). The WeChat Reading platform may be temporarily unavailable. Please try again in a few minutes.`,
+				details: error,
+			};
+		}
+
+		if (status === '503') {
+			return {
+				code: ApiErrorCode.SERVICE_UNAVAILABLE,
+				message: `Service unavailable (HTTP 503). The WeChat Reading platform is temporarily down for maintenance. Please try again later.`,
+				details: error,
+			};
+		}
 
 		// Check for specific API error codes
 		if (errorMessage.includes(ApiErrorCode.UNAUTHORIZED)) {

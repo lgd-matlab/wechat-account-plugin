@@ -10,6 +10,7 @@ export class AddAccountModal extends Modal {
 	private pollInterval: number | null = null;
 	private qrContainer: HTMLElement;
 	private statusEl: HTMLElement;
+	private consecutiveErrors: number = 0;
 
 	constructor(app: App, plugin: WeWeRssPlugin) {
 		super(app);
@@ -81,6 +82,18 @@ export class AddAccountModal extends Modal {
 		try {
 			this.qrContainer.empty();
 			this.qrContainer.createEl('div', {
+				text: 'Checking server status...',
+				cls: 'wewe-rss-loading'
+			});
+
+			// Health check before generating QR code
+			const isHealthy = await this.plugin.accountService.checkServerHealth();
+			if (!isHealthy) {
+				throw new Error('WeChat Reading platform is currently unavailable. The server may be down or experiencing issues. Please try again later.');
+			}
+
+			this.qrContainer.empty();
+			this.qrContainer.createEl('div', {
 				text: 'Generating QR code...',
 				cls: 'wewe-rss-loading'
 			});
@@ -105,17 +118,15 @@ export class AddAccountModal extends Modal {
 			// Update status
 			this.updateStatus('Please scan the QR code with WeChat', 'pending');
 
+			// Reset error counter for new QR code
+			this.consecutiveErrors = 0;
+
 			// Start polling for login result
 			this.startPolling();
 
 		} catch (error) {
 			this.logger.error('Failed to generate QR code:', error);
-			this.qrContainer.empty();
-			this.qrContainer.createEl('div', {
-				text: `Error: ${error.message}`,
-				cls: 'wewe-rss-error-message'
-			});
-			this.updateStatus('Failed to generate QR code. Please try again.', 'error');
+			this.showError(error.message || 'Failed to generate QR code. Please try again.');
 		}
 	}
 
@@ -158,6 +169,9 @@ export class AddAccountModal extends Modal {
 					this.pollInterval = null;
 				}
 
+				// Reset error counter
+				this.consecutiveErrors = 0;
+
 				// Update status
 				this.updateStatus('Account added successfully!', 'success');
 
@@ -168,18 +182,33 @@ export class AddAccountModal extends Modal {
 				window.setTimeout(() => {
 					this.close();
 				}, 1000);
+			} else {
+				// Login still pending, reset error counter on successful check
+				this.consecutiveErrors = 0;
 			}
 
 		} catch (error) {
 			this.logger.error('Failed to check login status:', error);
 
-			// Stop polling on error
-			if (this.pollInterval) {
-				window.clearInterval(this.pollInterval);
-				this.pollInterval = null;
-			}
+			// Track consecutive errors
+			this.consecutiveErrors++;
 
-			this.updateStatus(`Error: ${error.message}`, 'error');
+			if (this.consecutiveErrors >= 3) {
+				// Stop polling after 3 consecutive errors
+				if (this.pollInterval) {
+					window.clearInterval(this.pollInterval);
+					this.pollInterval = null;
+				}
+
+				const errorMsg = error.message || 'Failed to connect to server after multiple attempts';
+				this.showError(errorMsg);
+			} else {
+				// Show transient error but keep polling
+				this.updateStatus(
+					`Connection issue (${this.consecutiveErrors}/3). Retrying...`,
+					'pending'
+				);
+			}
 		}
 	}
 
@@ -195,6 +224,42 @@ export class AddAccountModal extends Modal {
 		} else if (type === 'error') {
 			statusText.innerHTML = `<span class="wewe-rss-status-icon" style="color: var(--color-red)">✗</span> ${message}`;
 		}
+	}
+
+	private showError(message: string) {
+		this.qrContainer.empty();
+
+		const errorContainer = this.qrContainer.createEl('div', {
+			cls: 'wewe-rss-error-container'
+		});
+
+		errorContainer.createEl('p', {
+			text: message,
+			cls: 'wewe-rss-error-message'
+		});
+
+		// Add helpful actions
+		const actionsDiv = errorContainer.createEl('div', {
+			cls: 'wewe-rss-error-actions'
+		});
+
+		const tryAgainBtn = actionsDiv.createEl('button', {
+			text: 'Try Again',
+			cls: 'wewe-rss-btn'
+		});
+		tryAgainBtn.addEventListener('click', async () => {
+			await this.generateQRCode();
+		});
+
+		const checkStatusBtn = actionsDiv.createEl('button', {
+			text: 'Check Server Status',
+			cls: 'wewe-rss-btn-secondary'
+		});
+		checkStatusBtn.addEventListener('click', () => {
+			window.open(`${this.plugin.settings.platformUrl}`, '_blank');
+		});
+
+		this.updateStatus(message, 'error');
 	}
 
 	onClose() {

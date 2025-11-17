@@ -46,6 +46,12 @@ export interface MpArticle {
 
 export type GetMpArticlesResponse = MpArticle[];
 
+// Health Check API
+export interface HealthCheckResponse {
+	status: 'ok' | 'degraded' | 'down';
+	timestamp?: number;
+}
+
 // Error types
 export interface ApiError {
 	code: string;
@@ -59,4 +65,6 @@ export enum ApiErrorCode {
 	TOO_MANY_REQUESTS = 'WeReadError429', // Rate limited (小黑屋)
 	BAD_REQUEST = 'WeReadError400', // Invalid parameters
 	INTERNAL_ERROR = 'WeReadError500',
+	BAD_GATEWAY = 'WeReadError502',
+	SERVICE_UNAVAILABLE = 'WeReadError503',
 }
