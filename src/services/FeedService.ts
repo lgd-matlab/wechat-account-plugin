@@ -3,7 +3,7 @@ import { Feed } from '../types';
 import { WeChatApiClient } from './api/WeChatApiClient';
 import { MpInfo, MpArticle } from './api/types';
 import { logger } from '../utils/logger';
-import { extractFeedIdFromUrl } from '../utils/helpers';
+import { extractFeedIdFromUrl, isArticleRecent } from '../utils/helpers';
 
 /**
  * FeedService - Manages WeChat public account feeds
@@ -60,7 +60,7 @@ export class FeedService {
 			// Get MP info from share link with authentication
 			const mpInfoList = await this.apiClient.getMpInfoWithAuth(
 				wxsLink,
-				credentials.vid.toString(),
+				account.id.toString(),
 				credentials.token
 			);
 
@@ -126,7 +126,7 @@ export class FeedService {
 				try {
 					const articles = await this.apiClient.getMpArticles(
 						mpId,
-						credentials.vid.toString(),
+						account.id.toString(),
 						credentials.token,
 						page
 					);
@@ -136,8 +136,24 @@ export class FeedService {
 						break;
 					}
 
+					// Filter articles by retention period
+					const retentionDays = this.plugin.settings.articleRetentionDays || 30;
+					const recentArticles = articles.filter(article =>
+						isArticleRecent(article.publishTime * 1000, retentionDays)
+					);
+
+					const filteredCount = articles.length - recentArticles.length;
+					if (filteredCount > 0) {
+						logger.info(`Filtered ${filteredCount} articles older than ${retentionDays} days on page ${page}`);
+					}
+
+					if (recentArticles.length === 0) {
+						logger.info(`No recent articles on page ${page}, stopping fetch`);
+						break;
+					}
+
 					// Save articles to database
-					const articlesToInsert = articles.map(article => ({
+					const articlesToInsert = recentArticles.map(article => ({
 						feedId: feedId,
 						title: article.title,
 						content: '', // Will be filled when syncing notes
@@ -200,7 +216,7 @@ export class FeedService {
 			// Fetch first page of articles
 			const articles = await this.apiClient.getMpArticles(
 				feed.feedId,
-				credentials.vid.toString(),
+				account.id.toString(),
 				credentials.token,
 				1
 			);
@@ -211,8 +227,25 @@ export class FeedService {
 				return 0;
 			}
 
+			// Filter articles by retention period
+			const retentionDays = this.plugin.settings.articleRetentionDays || 30;
+			const recentArticles = articles.filter(article =>
+				isArticleRecent(article.publishTime * 1000, retentionDays)
+			);
+
+			const filteredCount = articles.length - recentArticles.length;
+			if (filteredCount > 0) {
+				logger.info(`Filtered ${filteredCount} articles older than ${retentionDays} days`);
+			}
+
+			if (recentArticles.length === 0) {
+				logger.info('No recent articles found');
+				this.plugin.databaseService.feeds.updateLastSync(feedId);
+				return 0;
+			}
+
 			// Save new articles
-			const articlesToInsert = articles.map(article => ({
+			const articlesToInsert = recentArticles.map(article => ({
 				feedId: feedId,
 				title: article.title,
 				content: '',

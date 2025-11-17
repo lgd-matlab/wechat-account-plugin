@@ -9,6 +9,8 @@ export interface SyncResult {
 	notesCreated: number;
 	notesSkipped: number;
 	notesFailed: number;
+	articlesDeleted: number;
+	notesDeleted: number;
 	errors: string[];
 }
 
@@ -51,6 +53,8 @@ export class SyncService {
 			notesCreated: 0,
 			notesSkipped: 0,
 			notesFailed: 0,
+			articlesDeleted: 0,
+			notesDeleted: 0,
 			errors: []
 		};
 
@@ -71,6 +75,12 @@ export class SyncService {
 				result.notesSkipped = noteResult.skipped;
 				result.notesFailed = noteResult.failed;
 			}
+
+			// Step 3: Cleanup old articles and notes
+			const retentionDays = this.plugin.settings.articleRetentionDays || 30;
+			const cleanupResult = await this.cleanupOldArticlesAndNotes(retentionDays);
+			result.articlesDeleted = cleanupResult.articlesDeleted;
+			result.notesDeleted = cleanupResult.notesDeleted;
 
 			this.lastSyncTime = new Date();
 			this.logger.info('Sync completed successfully', result);
@@ -171,6 +181,38 @@ export class SyncService {
 		this.logger.info('Note creation completed', result);
 
 		return result;
+	}
+
+	/**
+	 * Cleanup old articles and their notes based on retention policy
+	 * @param retentionDays Articles older than this will be deleted
+	 * @returns Number of articles and notes deleted
+	 */
+	private async cleanupOldArticlesAndNotes(retentionDays: number): Promise<{
+		articlesDeleted: number;
+		notesDeleted: number;
+	}> {
+		try {
+			this.logger.info(`Cleaning up articles older than ${retentionDays} days...`);
+
+			// Delete old articles from database (returns IDs of deleted articles)
+			const { deletedIds, count } = this.plugin.databaseService.articles.cleanupOldArticles(retentionDays);
+
+			if (count === 0) {
+				this.logger.info('No old articles to cleanup');
+				return { articlesDeleted: 0, notesDeleted: 0 };
+			}
+
+			// Delete corresponding notes
+			const notesDeleted = await this.plugin.noteCreator.deleteNotesByArticleIds(deletedIds);
+
+			this.logger.info(`Cleanup complete: ${count} articles and ${notesDeleted} notes deleted`);
+
+			return { articlesDeleted: count, notesDeleted };
+		} catch (error) {
+			this.logger.error('Failed to cleanup old articles and notes:', error);
+			return { articlesDeleted: 0, notesDeleted: 0 };
+		}
 	}
 
 	/**

@@ -46,12 +46,6 @@ export interface MpArticle {
 
 export type GetMpArticlesResponse = MpArticle[];
 
-// Health Check API
-export interface HealthCheckResponse {
-	status: 'ok' | 'degraded' | 'down';
-	timestamp?: number;
-}
-
 // Error types
 export interface ApiError {
 	code: string;

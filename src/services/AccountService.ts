@@ -41,19 +41,6 @@ export class AccountService {
 	}
 
 	/**
-	 * Check server health before initiating login flow
-	 * Returns true if API is operational, false otherwise
-	 */
-	async checkServerHealth(): Promise<boolean> {
-		try {
-			return await this.apiClient.checkHealth();
-		} catch (error) {
-			logger.error('Server health check failed:', error);
-			return false;
-		}
-	}
-
-	/**
 	 * Poll for login completion
 	 * Returns account data when login succeeds
 	 */
@@ -161,6 +148,13 @@ export class AccountService {
 			default:
 				logger.error(`Unhandled API error for account ${accountId}:`, apiError);
 		}
+	}
+
+	/**
+	 * Fetch article HTML content
+	 */
+	async fetchArticleContent(articleUrl: string): Promise<string> {
+		return await this.apiClient.fetchArticleContent(articleUrl);
 	}
 
 	/**

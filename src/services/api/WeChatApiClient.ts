@@ -9,7 +9,6 @@ import {
 	GetMpArticlesResponse,
 	ApiError,
 	ApiErrorCode,
-	HealthCheckResponse,
 } from './types';
 
 /**
@@ -23,56 +22,6 @@ export class WeChatApiClient {
 
 	constructor(platformUrl: string) {
 		this.baseUrl = platformUrl;
-	}
-
-	/**
-	 * Check API health status
-	 * Attempts to reach health endpoint before initiating login flow
-	 */
-	async checkHealth(): Promise<boolean> {
-		try {
-			logger.info('Checking API health...');
-
-			// Try common health endpoint patterns
-			const healthUrls = [
-				`${this.baseUrl}/health`,
-				`${this.baseUrl}/api/health`,
-				`${this.baseUrl}/api/v2/health`
-			];
-
-			for (const url of healthUrls) {
-				try {
-					const response = await this.request<HealthCheckResponse>(
-						{ url, method: 'GET' },
-						5000 // 5 second timeout
-					);
-
-					if (response && (response.status === 'ok' || response.status === 'degraded')) {
-						logger.info('API health check passed:', url);
-						return true;
-					}
-				} catch (error) {
-					// Try next endpoint
-					continue;
-				}
-			}
-
-			// If all health endpoints fail, try a simple ping to base URL
-			try {
-				await this.request<any>(
-					{ url: this.baseUrl, method: 'HEAD' },
-					3000
-				);
-				logger.info('Base URL reachable (no health endpoint found)');
-				return true; // Server is up even if no health endpoint
-			} catch (error) {
-				logger.warn('API health check failed:', error);
-				return false;
-			}
-		} catch (error) {
-			logger.error('Health check error:', error);
-			return false;
-		}
 	}
 
 	/**
@@ -175,6 +124,26 @@ export class WeChatApiClient {
 	}
 
 	/**
+	 * Fetch article HTML content from WeChat article URL
+	 */
+	async fetchArticleContent(articleUrl: string): Promise<string> {
+		try {
+			logger.debug('Fetching article content:', articleUrl);
+
+			const response = await this.request<string>({
+				url: articleUrl,
+				method: 'GET',
+			}, undefined, undefined, { rawResponse: true });
+
+			logger.debug('Article content fetched successfully');
+			return response;
+		} catch (error) {
+			logger.error('Failed to fetch article content:', error);
+			throw this.handleError(error);
+		}
+	}
+
+	/**
 	 * Get articles from a public account
 	 */
 	async getMpArticles(
@@ -212,7 +181,7 @@ export class WeChatApiClient {
 		config: RequestUrlParam,
 		timeout?: number,
 		params?: Record<string, string>,
-		retryOptions?: { maxRetries?: number; backoffMs?: number }
+		retryOptions?: { maxRetries?: number; backoffMs?: number; rawResponse?: boolean }
 	): Promise<T> {
 		// Add query parameters if provided
 		if (params) {
@@ -227,6 +196,7 @@ export class WeChatApiClient {
 
 		const maxRetries = retryOptions?.maxRetries ?? 0;
 		const backoffMs = retryOptions?.backoffMs ?? 1000;
+		const rawResponse = retryOptions?.rawResponse ?? false;
 
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
 			try {
@@ -244,7 +214,8 @@ export class WeChatApiClient {
 						url: config.url,
 						status: response.status
 					});
-					return response.json as T;
+					// Return raw text for HTML content, otherwise parse as JSON
+					return (rawResponse ? response.text : response.json) as T;
 				} else {
 					throw new Error(`HTTP ${response.status}: ${response.text}`);
 				}

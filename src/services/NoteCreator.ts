@@ -3,6 +3,7 @@ import type WeWeRssPlugin from '../main';
 import { Article, Feed } from '../types';
 import { sanitizeFilename, formatTimestamp } from '../utils/helpers';
 import { Logger } from '../utils/logger';
+import { ContentParser } from './feed/ContentParser';
 
 export interface NoteMetadata {
 	title: string;
@@ -17,11 +18,13 @@ export class NoteCreator {
 	private plugin: WeWeRssPlugin;
 	private app: App;
 	private logger: Logger;
+	private contentParser: ContentParser;
 
 	constructor(plugin: WeWeRssPlugin) {
 		this.plugin = plugin;
 		this.app = plugin.app;
 		this.logger = new Logger('NoteCreator');
+		this.contentParser = new ContentParser(plugin.settings.enableCleanHtml);
 	}
 
 	/**
@@ -41,6 +44,28 @@ export class NoteCreator {
 				return existingFile;
 			}
 
+			// Fetch article content if not already available
+			let articleContent = article.content;
+			if (!articleContent || articleContent.trim() === '') {
+				this.logger.info(`Fetching article content from: ${article.url}`);
+				try {
+					const htmlContent = await this.plugin.accountService.fetchArticleContent(article.url);
+					const { markdown, cleanHtml } = this.contentParser.parseContent(htmlContent);
+
+					// Update article in database with content
+					articleContent = markdown;
+					this.plugin.databaseService.articles.update(article.id, {
+						content: markdown,
+						contentHtml: cleanHtml
+					});
+
+					this.logger.debug(`Article content fetched and parsed: ${markdown.length} chars`);
+				} catch (error) {
+					this.logger.warn(`Failed to fetch article content, will create link-only note:`, error);
+					articleContent = `[Read full article](${article.url})`;
+				}
+			}
+
 			// Prepare metadata
 			const metadata: NoteMetadata = {
 				title: article.title,
@@ -51,7 +76,11 @@ export class NoteCreator {
 			};
 
 			// Generate note content
-			const content = this.generateNoteContent(article, metadata, noteTemplate);
+			const content = this.generateNoteContent(
+				{ ...article, content: articleContent },
+				metadata,
+				noteTemplate
+			);
 
 			// Ensure parent folder exists
 			await this.ensureFolderExists(notePath);
@@ -209,6 +238,28 @@ export class NoteCreator {
 		} catch (error) {
 			this.logger.error(`Failed to update article ${articleId}:`, error);
 		}
+	}
+
+	/**
+	 * Delete notes for multiple articles by their IDs
+	 * @param articleIds Array of article IDs
+	 * @returns Number of notes deleted
+	 */
+	async deleteNotesByArticleIds(articleIds: number[]): Promise<number> {
+		let deletedCount = 0;
+
+		for (const id of articleIds) {
+			const article = this.plugin.databaseService.articles.findById(id);
+			if (article?.noteId) {
+				const deleted = await this.deleteNote(article.noteId);
+				if (deleted) {
+					deletedCount++;
+				}
+			}
+		}
+
+		this.logger.info(`Deleted ${deletedCount} notes for ${articleIds.length} articles`);
+		return deletedCount;
 	}
 
 	/**

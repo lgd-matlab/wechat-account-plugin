@@ -1,5 +1,6 @@
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, Modal } from 'obsidian';
 import WeWeRssPlugin from '../../main';
+import { Account, AccountStatus } from '../../types';
 
 export class WeWeRssSettingTab extends PluginSettingTab {
 	plugin: WeWeRssPlugin;
@@ -21,6 +22,9 @@ export class WeWeRssSettingTab extends PluginSettingTab {
 			text: 'Subscribe to WeChat public accounts and sync articles as Obsidian notes.',
 			cls: 'wewe-rss-settings-description'
 		});
+
+		// Account Management Section
+		this.addAccountManagement(containerEl);
 
 		// Sync Settings Section
 		this.addSyncSettings(containerEl);
@@ -109,6 +113,18 @@ export class WeWeRssSettingTab extends PluginSettingTab {
 				.setDynamicTooltip()
 				.onChange(async (value) => {
 					this.plugin.settings.maxArticlesPerFeed = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Article Retention (Days)')
+			.setDesc('Only sync articles published within the last N days. Older articles and notes will be automatically deleted during sync.')
+			.addSlider(slider => slider
+				.setLimits(7, 365, 1)
+				.setValue(this.plugin.settings.articleRetentionDays)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.articleRetentionDays = value;
 					await this.plugin.saveSettings();
 				}));
 	}
@@ -318,5 +334,121 @@ tags: [wewe-rss, {{feedName}}]
 			.setName('Database Location')
 			.setDesc(`${this.plugin.settings.databasePath}`)
 			.setClass('wewe-rss-readonly-setting');
+	}
+
+	private addAccountManagement(containerEl: HTMLElement) {
+		containerEl.createEl('h3', { text: 'Account Management' });
+
+		// Description
+		containerEl.createEl('p', {
+			text: 'Manage WeChat Reading accounts used for feed synchronization.',
+			cls: 'setting-item-description'
+		});
+
+		// Get accounts
+		const accounts = this.plugin.databaseService.accounts.findAll();
+
+		// Statistics
+		const activeCount = accounts.filter(a => a.status === AccountStatus.ACTIVE).length;
+		const statsEl = containerEl.createEl('div', { cls: 'wewe-rss-account-stats' });
+		statsEl.createEl('span', {
+			text: `Total Accounts: ${accounts.length} | Active: ${activeCount}`,
+			cls: 'wewe-rss-stats-text'
+		});
+
+		// Account list
+		if (accounts.length === 0) {
+			// No accounts message
+			const noAccountsEl = containerEl.createEl('div', { cls: 'wewe-rss-no-accounts' });
+			noAccountsEl.createEl('p', { text: '📭 No accounts added yet.' });
+			noAccountsEl.createEl('p', { text: 'Click "Add Account" below to get started.' });
+		} else {
+			// Display each account
+			accounts.forEach(account => {
+				const accountSetting = new Setting(containerEl)
+					.setName(account.name)
+					.setDesc(this.getAccountDescription(account));
+
+				// Status badge
+				const statusBadge = accountSetting.nameEl.createSpan({
+					cls: `wewe-rss-status-badge wewe-rss-status-${account.status}`
+				});
+				statusBadge.setText(account.status.toUpperCase());
+
+				// Delete button
+				accountSetting.addButton(button => button
+					.setButtonText('Delete')
+					.setWarning()
+					.onClick(async () => {
+						// Confirmation
+						const confirmed = await this.confirmAccountDeletion(account.name);
+						if (confirmed) {
+							this.plugin.databaseService.accounts.delete(account.id);
+							new Notice(`Account "${account.name}" deleted`);
+							this.display(); // Refresh settings
+						}
+					}));
+			});
+		}
+
+		// Add Account button
+		new Setting(containerEl)
+			.setName('Add New Account')
+			.setDesc('Scan QR code to authenticate a new WeChat account')
+			.addButton(button => button
+				.setButtonText('Add Account')
+				.setCta()
+				.onClick(async () => {
+					const { AddAccountModal } = await import('../modals/AddAccountModal');
+					new AddAccountModal(this.app, this.plugin).open();
+				}));
+	}
+
+	private getAccountDescription(account: Account): string {
+		const createdDate = new Date(account.createdAt).toLocaleDateString();
+		let desc = `Created: ${createdDate}`;
+
+		if (account.status === AccountStatus.BLACKLISTED && account.blacklistedUntil) {
+			const until = new Date(account.blacklistedUntil).toLocaleString();
+			desc += ` | Blacklisted until: ${until}`;
+		}
+
+		return desc;
+	}
+
+	private async confirmAccountDeletion(accountName: string): Promise<boolean> {
+		return new Promise((resolve) => {
+			const modal = new Modal(this.app);
+			modal.titleEl.setText('Delete Account?');
+
+			modal.contentEl.createEl('p', {
+				text: `Are you sure you want to delete "${accountName}"?`
+			});
+			modal.contentEl.createEl('p', {
+				text: 'All feeds using this account will stop syncing.',
+				cls: 'mod-warning'
+			});
+
+			const buttonContainer = modal.contentEl.createEl('div', {
+				cls: 'modal-button-container'
+			});
+
+			buttonContainer.createEl('button', { text: 'Cancel' })
+				.addEventListener('click', () => {
+					modal.close();
+					resolve(false);
+				});
+
+			const deleteBtn = buttonContainer.createEl('button', {
+				text: 'Delete',
+				cls: 'mod-warning'
+			});
+			deleteBtn.addEventListener('click', () => {
+				modal.close();
+				resolve(true);
+			});
+
+			modal.open();
+		});
 	}
 }

@@ -11,6 +11,7 @@ export class AddAccountModal extends Modal {
 	private qrContainer: HTMLElement;
 	private statusEl: HTMLElement;
 	private consecutiveErrors: number = 0;
+	private loginSuccessful: boolean = false;
 
 	constructor(app: App, plugin: WeWeRssPlugin) {
 		super(app);
@@ -82,18 +83,6 @@ export class AddAccountModal extends Modal {
 		try {
 			this.qrContainer.empty();
 			this.qrContainer.createEl('div', {
-				text: 'Checking server status...',
-				cls: 'wewe-rss-loading'
-			});
-
-			// Health check before generating QR code
-			const isHealthy = await this.plugin.accountService.checkServerHealth();
-			if (!isHealthy) {
-				throw new Error('WeChat Reading platform is currently unavailable. The server may be down or experiencing issues. Please try again later.');
-			}
-
-			this.qrContainer.empty();
-			this.qrContainer.createEl('div', {
 				text: 'Generating QR code...',
 				cls: 'wewe-rss-loading'
 			});
@@ -118,8 +107,9 @@ export class AddAccountModal extends Modal {
 			// Update status
 			this.updateStatus('Please scan the QR code with WeChat', 'pending');
 
-			// Reset error counter for new QR code
+			// Reset error counter and login flag for new QR code
 			this.consecutiveErrors = 0;
+			this.loginSuccessful = false;
 
 			// Start polling for login result
 			this.startPolling();
@@ -152,7 +142,7 @@ export class AddAccountModal extends Modal {
 	}
 
 	private async checkLoginStatus() {
-		if (!this.uuid) {
+		if (!this.uuid || this.loginSuccessful) {
 			return;
 		}
 
@@ -160,6 +150,9 @@ export class AddAccountModal extends Modal {
 			const account = await this.plugin.accountService.checkLoginStatus(this.uuid);
 
 			if (account) {
+				// Set flag FIRST to prevent race conditions
+				this.loginSuccessful = true;
+
 				// Login successful
 				this.logger.info('Account added successfully:', account);
 
@@ -188,6 +181,12 @@ export class AddAccountModal extends Modal {
 			}
 
 		} catch (error) {
+			// Suppress errors if login already successful
+			if (this.loginSuccessful) {
+				this.logger.debug('Ignoring polling error after successful login');
+				return;
+			}
+
 			this.logger.error('Failed to check login status:', error);
 
 			// Track consecutive errors

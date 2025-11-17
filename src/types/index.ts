@@ -9,6 +9,7 @@ export interface WeWeRssSettings {
 	syncInterval: number; // Sync interval in minutes
 	updateDelay: number; // Delay between feed updates (seconds)
 	maxArticlesPerFeed: number;
+	articleRetentionDays: number; // Only keep articles from last N days
 
 	// Note creation
 	noteFolder: string;
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: WeWeRssSettings = {
 	syncInterval: 60, // 60 minutes
 	updateDelay: 60, // 60 seconds
 	maxArticlesPerFeed: 100,
+	articleRetentionDays: 30, // Keep articles from last 30 days
 	noteFolder: 'WeWe RSS',
 	noteLocation: 'WeWe RSS',
 	noteTemplate: `---

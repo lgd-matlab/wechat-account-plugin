@@ -349,6 +349,32 @@ export class ArticleRepository {
 	}
 
 	/**
+	 * Cleanup old articles (for retention policy)
+	 * Returns both IDs and count of deleted articles
+	 */
+	cleanupOldArticles(retentionDays: number): { deletedIds: number[], count: number } {
+		const threshold = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+
+		// Get IDs of articles to be deleted
+		const idsResult = this.db.query<{ id: number }>(
+			'SELECT id FROM articles WHERE published_at < ?',
+			[threshold]
+		);
+
+		const deletedIds = idsResult.map(row => row.id);
+
+		if (deletedIds.length > 0) {
+			this.db.execute(
+				'DELETE FROM articles WHERE published_at < ?',
+				[threshold]
+			);
+			logger.info(`Old articles deleted: ${deletedIds.length} (older than ${retentionDays} days)`);
+		}
+
+		return { deletedIds, count: deletedIds.length };
+	}
+
+	/**
 	 * Cleanup synced articles older than threshold
 	 */
 	cleanupSynced(daysOld: number = 30): number {

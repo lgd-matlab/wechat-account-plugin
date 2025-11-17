@@ -69,3 +69,15 @@ export function matchesPatterns(str: string, patterns: string[]): boolean {
 		}
 	});
 }
+
+/**
+ * Check if an article is within the retention period
+ * @param publishedAt Article publish timestamp (milliseconds)
+ * @param daysThreshold Retention period in days (default: 30)
+ * @returns true if article is within retention period
+ */
+export function isArticleRecent(publishedAt: number, daysThreshold: number = 30): boolean {
+	const thresholdMs = daysThreshold * 24 * 60 * 60 * 1000;
+	const articleAge = Date.now() - publishedAt;
+	return articleAge <= thresholdMs;
+}
