@@ -1,7 +1,7 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian';
 import type WeWeRssPlugin from '../main';
 import { Article, Feed } from '../types';
-import { sanitizeFilename, formatTimestamp } from '../utils/helpers';
+import { sanitizeFilename, formatTimestamp, formatPublishedDate } from '../utils/helpers';
 import { Logger } from '../utils/logger';
 import { ContentParser } from './feed/ContentParser';
 
@@ -70,7 +70,7 @@ export class NoteCreator {
 			const metadata: NoteMetadata = {
 				title: article.title,
 				feedName: feed.title,
-				publishedAt: formatTimestamp(article.publishedAt),
+				publishedAt: formatPublishedDate(article.publishedAt),
 				url: article.url,
 				tags: addTags ? this.extractTags(feed.title) : []
 			};

@@ -8,6 +8,7 @@ import {
 	getNextCronTime,
 	isPast,
 	formatTimestamp,
+	formatPublishedDate,
 	sanitizeFilename,
 	extractFeedIdFromUrl,
 	matchesPatterns,
@@ -115,6 +116,47 @@ describe('helpers', () => {
 			const result2 = formatTimestamp(timestamp);
 
 			expect(result1).toBe(result2);
+		});
+	});
+
+	describe('formatPublishedDate', () => {
+		it('should format timestamp as "Month Day"', () => {
+			// January 15, 2025 11:24:00
+			const timestamp = new Date(2025, 0, 15, 11, 24, 0).getTime();
+			expect(formatPublishedDate(timestamp)).toBe('January 15');
+		});
+
+		it('should handle single-digit days', () => {
+			// December 5, 2024
+			const timestamp = new Date(2024, 11, 5, 10, 30, 0).getTime();
+			expect(formatPublishedDate(timestamp)).toBe('December 5');
+		});
+
+		it('should handle double-digit days', () => {
+			// March 25, 2025
+			const timestamp = new Date(2025, 2, 25, 14, 45, 0).getTime();
+			expect(formatPublishedDate(timestamp)).toBe('March 25');
+		});
+
+		it('should handle end of month', () => {
+			// February 28, 2025
+			const timestamp = new Date(2025, 1, 28, 23, 59, 59).getTime();
+			expect(formatPublishedDate(timestamp)).toBe('February 28');
+		});
+
+		it('should handle leap year', () => {
+			// February 29, 2024 (leap year)
+			const timestamp = new Date(2024, 1, 29, 12, 0, 0).getTime();
+			expect(formatPublishedDate(timestamp)).toBe('February 29');
+		});
+
+		it('should ignore time component', () => {
+			// Same day, different times should produce same output
+			const morning = new Date(2025, 6, 4, 6, 0, 0).getTime();
+			const evening = new Date(2025, 6, 4, 22, 0, 0).getTime();
+
+			expect(formatPublishedDate(morning)).toBe('July 4');
+			expect(formatPublishedDate(evening)).toBe('July 4');
 		});
 	});
 

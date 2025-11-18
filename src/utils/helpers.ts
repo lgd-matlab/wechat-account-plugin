@@ -34,6 +34,20 @@ export function formatTimestamp(timestamp: number): string {
 }
 
 /**
+ * Format timestamp to "Month Day" format (e.g., "December 18")
+ * Used for displaying published dates in article notes
+ *
+ * @param timestamp Unix timestamp in milliseconds
+ * @returns Formatted date string (e.g., "January 5", "December 31")
+ */
+export function formatPublishedDate(timestamp: number): string {
+	const date = new Date(timestamp);
+	const month = date.toLocaleString('en-US', { month: 'long' });
+	const day = date.getDate();
+	return `${month} ${day}`;
+}
+
+/**
  * Sanitize filename for vault storage
  */
 export function sanitizeFilename(filename: string): string {
