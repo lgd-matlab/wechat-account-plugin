@@ -10,6 +10,7 @@ export interface WeWeRssSettings {
 	updateDelay: number; // Delay between feed updates (seconds)
 	maxArticlesPerFeed: number;
 	articleRetentionDays: number; // Only keep articles from last N days
+	lastCleanupRetentionDays: number; // Last used value for manual cleanup
 
 	// Note creation
 	noteFolder: string;
@@ -38,6 +39,7 @@ export const DEFAULT_SETTINGS: WeWeRssSettings = {
 	updateDelay: 60, // 60 seconds
 	maxArticlesPerFeed: 100,
 	articleRetentionDays: 30, // Keep articles from last 30 days
+	lastCleanupRetentionDays: 30, // Default cleanup retention
 	noteFolder: 'WeWe RSS',
 	noteLocation: 'WeWe RSS',
 	noteTemplate: `---

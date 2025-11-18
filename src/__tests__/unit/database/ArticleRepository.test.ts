@@ -639,6 +639,92 @@ describe('ArticleRepository', () => {
 		});
 	});
 
+	describe('countArticlesOlderThan', () => {
+		it('should count articles older than specified days', () => {
+			const old = createSampleArticle({
+				published_at: Date.now() - 60 * 24 * 60 * 60 * 1000, // 60 days ago
+			});
+			const recent = createSampleArticle({
+				published_at: Date.now() - 10 * 24 * 60 * 60 * 1000, // 10 days ago
+				id: 2,
+				url: 'http://recent.com',
+			});
+
+			insertArticle(db, old);
+			insertArticle(db, recent);
+
+			const count = repository.countArticlesOlderThan(30);
+
+			expect(count).toBe(1); // Only the 60-day-old article
+		});
+
+		it('should return 0 when no old articles exist', () => {
+			const recent = createSampleArticle({
+				published_at: Date.now() - 5 * 24 * 60 * 60 * 1000, // 5 days ago
+			});
+
+			insertArticle(db, recent);
+
+			const count = repository.countArticlesOlderThan(30);
+
+			expect(count).toBe(0);
+		});
+
+		it('should count all articles when all are old', () => {
+			const old1 = createSampleArticle({
+				published_at: Date.now() - 60 * 24 * 60 * 60 * 1000,
+			});
+			const old2 = createSampleArticle({
+				published_at: Date.now() - 45 * 24 * 60 * 60 * 1000,
+				id: 2,
+				url: 'http://old2.com',
+			});
+
+			insertArticle(db, old1);
+			insertArticle(db, old2);
+
+			const count = repository.countArticlesOlderThan(30);
+
+			expect(count).toBe(2);
+		});
+
+		it('should return 0 for empty database', () => {
+			const count = repository.countArticlesOlderThan(30);
+
+			expect(count).toBe(0);
+		});
+
+		it('should handle 1 day retention period', () => {
+			const old = createSampleArticle({
+				published_at: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 days ago
+			});
+
+			insertArticle(db, old);
+
+			const count = repository.countArticlesOlderThan(1);
+
+			expect(count).toBe(1);
+		});
+
+		it('should handle 365 day retention period', () => {
+			const veryOld = createSampleArticle({
+				published_at: Date.now() - 400 * 24 * 60 * 60 * 1000, // 400 days ago
+			});
+			const old = createSampleArticle({
+				published_at: Date.now() - 300 * 24 * 60 * 60 * 1000, // 300 days ago
+				id: 2,
+				url: 'http://old.com',
+			});
+
+			insertArticle(db, veryOld);
+			insertArticle(db, old);
+
+			const count = repository.countArticlesOlderThan(365);
+
+			expect(count).toBe(1); // Only 400-day-old article
+		});
+	});
+
 	describe('getStats', () => {
 		it('should return article statistics', () => {
 			insertArticle(db, sampleArticle1); // feed1, unsynced

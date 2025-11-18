@@ -77,7 +77,7 @@ export class SyncService {
 			}
 
 			// Step 3: Cleanup old articles and notes
-			const retentionDays = this.plugin.settings.articleRetentionDays || 30;
+			const retentionDays = this.plugin.settings.lastCleanupRetentionDays || 30;
 			const cleanupResult = await this.cleanupOldArticlesAndNotes(retentionDays);
 			result.articlesDeleted = cleanupResult.articlesDeleted;
 			result.notesDeleted = cleanupResult.notesDeleted;
@@ -295,13 +295,18 @@ export class SyncService {
 	}
 
 	/**
-	 * Cleanup old synced articles from database
+	 * Cleanup old synced articles from database and delete corresponding notes
+	 * @param retentionDays Articles older than this will be deleted (default: 30)
+	 * @returns Object with counts of deleted articles and notes
 	 */
-	async cleanupOldArticles(retentionDays: number = 30): Promise<number> {
+	async cleanupOldArticles(retentionDays: number = 30): Promise<{
+		articlesDeleted: number;
+		notesDeleted: number;
+	}> {
 		try {
-			const deleted = this.plugin.databaseService.articles.cleanupSynced(retentionDays);
-			this.logger.info(`Cleaned up ${deleted} old articles (retention: ${retentionDays} days)`);
-			return deleted;
+			const result = await this.cleanupOldArticlesAndNotes(retentionDays);
+			this.logger.info(`Cleaned up ${result.articlesDeleted} articles and ${result.notesDeleted} notes (retention: ${retentionDays} days)`);
+			return result;
 		} catch (error) {
 			this.logger.error('Failed to cleanup old articles:', error);
 			throw error;

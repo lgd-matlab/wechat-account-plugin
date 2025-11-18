@@ -115,18 +115,6 @@ export class WeWeRssSettingTab extends PluginSettingTab {
 					this.plugin.settings.maxArticlesPerFeed = value;
 					await this.plugin.saveSettings();
 				}));
-
-		new Setting(containerEl)
-			.setName('Article Retention (Days)')
-			.setDesc('Only sync articles published within the last N days. Older articles and notes will be automatically deleted during sync.')
-			.addSlider(slider => slider
-				.setLimits(7, 365, 1)
-				.setValue(this.plugin.settings.articleRetentionDays)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.articleRetentionDays = value;
-					await this.plugin.saveSettings();
-				}));
 	}
 
 	private addNoteSettings(containerEl: HTMLElement) {
@@ -319,14 +307,36 @@ tags: [wewe-rss, {{feedName}}]
 		// Cleanup button
 		new Setting(containerEl)
 			.setName('Cleanup Old Articles')
-			.setDesc('Delete synced articles older than 30 days from database (notes are preserved)')
+			.setDesc('Delete old articles from database (notes are preserved). You can specify how many days to keep.')
 			.addButton(button => button
 				.setButtonText('Clean Up')
 				.setWarning()
 				.onClick(async () => {
-					const count = await this.plugin.syncService.cleanupOldArticles(30);
-					new Notice(`Cleaned up ${count} old articles`);
-					this.display(); // Refresh stats
+					// Get last used retention days or default to 30
+					const defaultDays = this.plugin.settings.lastCleanupRetentionDays || 30;
+
+					// Get count for preview
+					const estimatedCount = this.plugin.databaseService.articles.countArticlesOlderThan(defaultDays);
+
+					// Import and open modal
+					const { CleanupArticlesModal } = await import('../modals/CleanupArticlesModal');
+					new CleanupArticlesModal(
+						this.app,
+						async (retentionDays: number) => {
+							// Save the retention days for next time
+							this.plugin.settings.lastCleanupRetentionDays = retentionDays;
+							await this.plugin.saveSettings();
+
+							// Perform cleanup (deletes both DB records and note files)
+							const result = await this.plugin.syncService.cleanupOldArticles(retentionDays);
+							new Notice(`Cleaned up ${result.articlesDeleted} articles and ${result.notesDeleted} notes (older than ${retentionDays} days)`);
+
+							// Refresh stats display
+							this.display();
+						},
+						defaultDays,
+						estimatedCount
+					).open();
 				}));
 
 		// Database path info

@@ -430,6 +430,18 @@ export class ArticleRepository {
 	}
 
 	/**
+	 * Count articles older than specified days (for cleanup preview)
+	 */
+	countArticlesOlderThan(days: number): number {
+		const threshold = Date.now() - (days * 24 * 60 * 60 * 1000);
+		const result = this.db.queryOne<{ count: number }>(
+			'SELECT COUNT(*) as count FROM articles WHERE published_at < ?',
+			[threshold]
+		);
+		return result?.count || 0;
+	}
+
+	/**
 	 * Get article statistics
 	 */
 	getStats(): {
