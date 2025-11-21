@@ -221,6 +221,21 @@ export class ArticleRepository {
 	}
 
 	/**
+	 * Find articles published within a date range
+	 * @param startTimestamp Start of range (Unix milliseconds)
+	 * @param endTimestamp End of range (Unix milliseconds)
+	 * @returns Articles published between start and end timestamps
+	 */
+	findByDateRange(startTimestamp: number, endTimestamp: number): Article[] {
+		const results = this.db.query<any>(
+			'SELECT * FROM articles WHERE published_at >= ? AND published_at < ? ORDER BY published_at DESC',
+			[startTimestamp, endTimestamp]
+		);
+
+		return results.map(r => this.mapToArticle(r));
+	}
+
+	/**
 	 * Mark article as synced (note created)
 	 */
 	markAsSynced(id: number, noteId: string): void {

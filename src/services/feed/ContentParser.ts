@@ -18,8 +18,11 @@ export class ContentParser {
 	 */
 	parseContent(html: string): { markdown: string; cleanHtml: string } {
 		try {
+			// Extract embedded WeChat content if present
+			const extractedHtml = this.extractWeChatContent(html);
+
 			// Clean HTML first
-			const cleanHtml = this.enableCleanHtml ? this.cleanHtml(html) : html;
+			const cleanHtml = this.enableCleanHtml ? this.cleanHtml(extractedHtml) : extractedHtml;
 
 			// Convert to Markdown
 			const markdown = this.htmlToMarkdown(cleanHtml);
@@ -30,6 +33,69 @@ export class ContentParser {
 			// Return original HTML as fallback
 			return { markdown: html, cleanHtml: html };
 		}
+	}
+
+	/**
+	 * Extract WeChat article content from JavaScript variable
+	 * WeChat embeds article content in content_noencode with hex escapes
+	 */
+	private extractWeChatContent(html: string): string {
+		try {
+			// Pattern: content_noencode: JsDecode('...') or content_noencode: "..." or content_noencode: '...'
+			const patterns = [
+				/content_noencode\s*:\s*JsDecode\s*\(\s*['"](.+?)['"]\s*\)/s,  // JsDecode('...')
+				/content_noencode\s*:\s*["'](.+?)["']/s                        // "..." or '...'
+			];
+
+			let encodedContent: string | null = null;
+
+			for (const pattern of patterns) {
+				const match = html.match(pattern);
+				if (match && match[1]) {
+					encodedContent = match[1];
+					break;
+				}
+			}
+
+			if (!encodedContent) {
+				// Not a WeChat embedded article, return original HTML
+				logger.debug('No WeChat content_noencode found, using original HTML');
+				return html;
+			}
+
+			logger.debug('Found WeChat content_noencode, decoding...');
+
+			// Decode JavaScript escape sequences
+			const decodedContent = this.decodeJsEscapes(encodedContent);
+
+			return decodedContent;
+		} catch (error) {
+			logger.error('Failed to extract WeChat content:', error);
+			// Fallback to original HTML on extraction failure
+			return html;
+		}
+	}
+
+	/**
+	 * Decode JavaScript escape sequences to plain text
+	 * Handles hex escapes like \x3c (< character)
+	 */
+	private decodeJsEscapes(content: string): string {
+		// Decode hex escape sequences
+		// Note: We use replace with callback to handle all escape sequences at once
+		let decoded = content;
+
+		// Replace common JavaScript hex escape sequences
+		decoded = decoded.replace(/\\x5c/gi, '\\');   // Backslash
+		decoded = decoded.replace(/\\x0d/gi, '\r');   // Carriage return
+		decoded = decoded.replace(/\\x22/gi, '"');    // Double quote
+		decoded = decoded.replace(/\\x26/gi, '&');    // Ampersand
+		decoded = decoded.replace(/\\x27/gi, "'");    // Single quote
+		decoded = decoded.replace(/\\x3c/gi, '<');    // Less than
+		decoded = decoded.replace(/\\x3e/gi, '>');    // Greater than
+		decoded = decoded.replace(/\\x0a/gi, '\n');   // Newline
+
+		return decoded;
 	}
 
 	/**

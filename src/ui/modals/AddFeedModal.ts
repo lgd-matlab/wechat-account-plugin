@@ -1,6 +1,7 @@
 import { Modal, App, Notice, Setting } from 'obsidian';
 import WeWeRssPlugin from '../../main';
 import { Logger } from '../../utils/logger';
+import { ERROR_MESSAGES } from '../../types';
 
 export class AddFeedModal extends Modal {
 	private plugin: WeWeRssPlugin;
@@ -139,6 +140,21 @@ export class AddFeedModal extends Modal {
 
 		} catch (error) {
 			this.logger.error('Failed to subscribe to feed:', error);
+
+			// Check for account re-authentication error
+			if (error.message === 'ACCOUNT_NEEDS_REAUTH') {
+				new Notice(ERROR_MESSAGES.ACCOUNT_NEEDS_REAUTH, 15000); // Show for 15 seconds
+				this.close();
+
+				// Open settings tab automatically to guide user
+				setTimeout(() => {
+					(this.app as any).setting.open();
+					(this.app as any).setting.openTabById('wewe-rss');
+				}, 500);
+				return;
+			}
+
+			// Handle other errors
 			new Notice(`Failed to subscribe: ${error.message}`);
 			this.submitBtn.disabled = false;
 			this.submitBtn.textContent = 'Subscribe';

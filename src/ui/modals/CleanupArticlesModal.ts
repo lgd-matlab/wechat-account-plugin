@@ -45,10 +45,10 @@ export class CleanupArticlesModal extends Modal {
 		// Description
 		const description = contentEl.createEl('div', { cls: 'wewe-rss-modal-instructions' });
 		description.createEl('p', {
-			text: 'Delete articles older than a specified number of days from the database.'
+			text: 'Delete articles older than a specified number of days from both the database and your Obsidian vault.'
 		});
 		description.createEl('p', {
-			text: 'Note: This only removes database records. Note files in your vault will be preserved.',
+			text: '⚠️ Warning: This will permanently delete the corresponding markdown note files from your vault. Consider backing up important notes first.',
 			cls: 'mod-warning'
 		});
 
@@ -117,7 +117,7 @@ export class CleanupArticlesModal extends Modal {
 
 		// Confirm button
 		this.confirmButton = buttonContainer.createEl('button', {
-			text: 'Delete Articles',
+			text: 'Delete Articles & Notes',
 			cls: 'wewe-rss-btn mod-warning'
 		});
 		this.confirmButton.addEventListener('click', () => {

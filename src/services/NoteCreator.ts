@@ -246,19 +246,31 @@ export class NoteCreator {
 	 * @returns Number of notes deleted
 	 */
 	async deleteNotesByArticleIds(articleIds: number[]): Promise<number> {
+		if (articleIds.length === 0) {
+			return 0;
+		}
+
+		this.logger.info(`Attempting to delete notes for ${articleIds.length} articles`);
 		let deletedCount = 0;
 
 		for (const id of articleIds) {
 			const article = this.plugin.databaseService.articles.findById(id);
-			if (article?.noteId) {
+			if (!article) {
+				this.logger.warn(`Article ${id} not found in database`);
+				continue;
+			}
+
+			if (article.noteId) {
 				const deleted = await this.deleteNote(article.noteId);
 				if (deleted) {
 					deletedCount++;
 				}
+			} else {
+				this.logger.debug(`Article ${id} has no noteId, skipping note deletion`);
 			}
 		}
 
-		this.logger.info(`Deleted ${deletedCount} notes for ${articleIds.length} articles`);
+		this.logger.info(`Successfully deleted ${deletedCount} of ${articleIds.length} notes`);
 		return deletedCount;
 	}
 
@@ -272,8 +284,10 @@ export class NoteCreator {
 				await this.app.vault.delete(file);
 				this.logger.info(`Deleted note: ${notePath}`);
 				return true;
+			} else {
+				this.logger.warn(`Note file not found: ${notePath}`);
+				return false;
 			}
-			return false;
 		} catch (error) {
 			this.logger.error(`Failed to delete note ${notePath}:`, error);
 			return false;

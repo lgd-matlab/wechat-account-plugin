@@ -142,25 +142,38 @@ export class AddAccountModal extends Modal {
 	}
 
 	private async checkLoginStatus() {
-		if (!this.uuid || this.loginSuccessful) {
+		// Early exit if login already succeeded - prevents any further processing
+		if (this.loginSuccessful) {
+			this.logger.debug('Skipping poll - login already successful');
+			return;
+		}
+
+		if (!this.uuid) {
+			this.logger.debug('Skipping poll - no UUID');
 			return;
 		}
 
 		try {
+			// LAYER 2: Check flag again right before API call (race condition prevention)
+			if (this.loginSuccessful) {
+				this.logger.debug('Race condition prevented - login succeeded during check');
+				return;
+			}
+
 			const account = await this.plugin.accountService.checkLoginStatus(this.uuid);
 
 			if (account) {
-				// Set flag FIRST to prevent race conditions
+				// Set flag FIRST to prevent race conditions with in-flight requests
 				this.loginSuccessful = true;
 
-				// Login successful
-				this.logger.info('Account added successfully:', account);
-
-				// Stop polling
+				// Stop polling IMMEDIATELY after setting flag
 				if (this.pollInterval) {
 					window.clearInterval(this.pollInterval);
 					this.pollInterval = null;
 				}
+
+				// Login successful
+				this.logger.info('Account added successfully:', account);
 
 				// Reset error counter
 				this.consecutiveErrors = 0;

@@ -223,6 +223,24 @@ export class WeChatApiClient {
 				const isLastAttempt = attempt === maxRetries;
 				const isRetryable = this.isRetryableError(error);
 
+				// Log at debug level for retryable errors that will be retried
+				// Only log at error level on final failure
+				if (!isLastAttempt && isRetryable) {
+					logger.debug('API Request Failed (will retry):', {
+						url: config.url,
+						method: config.method,
+						attempt: attempt + 1,
+						maxRetries: maxRetries + 1,
+						error: error.message,
+						isRetryable
+					});
+					const delayMs = backoffMs * Math.pow(2, attempt); // Exponential backoff
+					logger.debug(`Retrying in ${delayMs}ms...`);
+					await this.sleep(delayMs);
+					continue;
+				}
+
+				// Final attempt or non-retryable error - log at error level
 				logger.error('API Request Failed:', {
 					url: config.url,
 					method: config.method,
@@ -233,14 +251,6 @@ export class WeChatApiClient {
 					isLastAttempt
 				});
 
-				if (!isLastAttempt && isRetryable) {
-					const delayMs = backoffMs * Math.pow(2, attempt); // Exponential backoff
-					logger.info(`Retrying in ${delayMs}ms...`);
-					await this.sleep(delayMs);
-					continue;
-				}
-
-				// Final attempt or non-retryable error
 				throw error;
 			}
 		}

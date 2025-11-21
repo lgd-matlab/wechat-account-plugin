@@ -100,27 +100,45 @@ export class WeWeRssSidebarView extends ItemView {
 
 		const statsBar = container.createEl('div', { cls: 'wewe-rss-stats-bar' });
 
+		// Feeds count
 		statsBar.createEl('span', {
 			text: `📚 ${stats.totalFeeds} feeds`,
 			cls: 'wewe-rss-stat'
 		});
 
+		// Separator
 		statsBar.createEl('span', {
-			text: `📄 ${stats.totalArticles} articles`,
+			text: ' | ',
+			cls: 'wewe-rss-stat-separator'
+		});
+
+		// Synced articles count
+		statsBar.createEl('span', {
+			text: `📄 ${stats.syncedArticles} synced`,
 			cls: 'wewe-rss-stat'
 		});
 
+		// Unsynced count (conditional)
 		if (stats.unsyncedArticles > 0) {
 			statsBar.createEl('span', {
-				text: `⚠️ ${stats.unsyncedArticles} unsynced`,
+				text: ', ',
+				cls: 'wewe-rss-stat-separator'
+			});
+			statsBar.createEl('span', {
+				text: `${stats.unsyncedArticles} unsynced`,
 				cls: 'wewe-rss-stat wewe-rss-stat-warning'
 			});
 		}
 
+		// Last sync time (conditional)
 		if (stats.lastSyncTime) {
 			const timeAgo = this.getTimeAgo(stats.lastSyncTime);
 			statsBar.createEl('span', {
-				text: `🕒 Last sync: ${timeAgo}`,
+				text: ' | ',
+				cls: 'wewe-rss-stat-separator'
+			});
+			statsBar.createEl('span', {
+				text: `🕒 ${timeAgo}`,
 				cls: 'wewe-rss-stat wewe-rss-stat-muted'
 			});
 		}

@@ -30,15 +30,16 @@ export class FeedService {
 			if (credentials.vid && credentials.token) {
 				return credentials;
 			}
+			// JSON parsed but missing vid or token - invalid format
+			throw new Error('ACCOUNT_NEEDS_REAUTH');
 		} catch (e) {
-			// Not JSON or invalid format
+			// Could be old token-only format (string) or parse error
+			if (e instanceof Error && e.message === 'ACCOUNT_NEEDS_REAUTH') {
+				throw e; // Re-throw validation error
+			}
+			// Old token-only format or JSON parse error
+			throw new Error('ACCOUNT_NEEDS_REAUTH');
 		}
-
-		// Legacy format (token only) or invalid
-		throw new Error(
-			'Account credentials are in old format or invalid. ' +
-			'Please remove this account and add it again by scanning the QR code in Settings > WeWe RSS > Accounts.'
-		);
 	}
 
 	/**
@@ -60,7 +61,7 @@ export class FeedService {
 			// Get MP info from share link with authentication
 			const mpInfoList = await this.apiClient.getMpInfoWithAuth(
 				wxsLink,
-				account.id.toString(),
+				credentials.vid.toString(),
 				credentials.token
 			);
 
@@ -126,7 +127,7 @@ export class FeedService {
 				try {
 					const articles = await this.apiClient.getMpArticles(
 						mpId,
-						account.id.toString(),
+						credentials.vid.toString(),
 						credentials.token,
 						page
 					);
@@ -136,15 +137,15 @@ export class FeedService {
 						break;
 					}
 
-					// Filter articles by retention period
-					const retentionDays = this.plugin.settings.articleRetentionDays || 30;
+					// Filter articles by sync days filter
+					const syncDaysFilter = this.plugin.settings.syncDaysFilter || 5;
 					const recentArticles = articles.filter(article =>
-						isArticleRecent(article.publishTime * 1000, retentionDays)
+						isArticleRecent(article.publishTime * 1000, syncDaysFilter)
 					);
 
 					const filteredCount = articles.length - recentArticles.length;
 					if (filteredCount > 0) {
-						logger.info(`Filtered ${filteredCount} articles older than ${retentionDays} days on page ${page}`);
+						logger.info(`Filtered ${filteredCount} articles older than ${syncDaysFilter} days on page ${page}`);
 					}
 
 					if (recentArticles.length === 0) {
@@ -216,7 +217,7 @@ export class FeedService {
 			// Fetch first page of articles
 			const articles = await this.apiClient.getMpArticles(
 				feed.feedId,
-				account.id.toString(),
+				credentials.vid.toString(),
 				credentials.token,
 				1
 			);
@@ -227,15 +228,15 @@ export class FeedService {
 				return 0;
 			}
 
-			// Filter articles by retention period
-			const retentionDays = this.plugin.settings.articleRetentionDays || 30;
+			// Filter articles by sync days filter
+			const syncDaysFilter = this.plugin.settings.syncDaysFilter || 30;
 			const recentArticles = articles.filter(article =>
-				isArticleRecent(article.publishTime * 1000, retentionDays)
+				isArticleRecent(article.publishTime * 1000, syncDaysFilter)
 			);
 
 			const filteredCount = articles.length - recentArticles.length;
 			if (filteredCount > 0) {
-				logger.info(`Filtered ${filteredCount} articles older than ${retentionDays} days`);
+				logger.info(`Filtered ${filteredCount} articles older than ${syncDaysFilter} days`);
 			}
 
 			if (recentArticles.length === 0) {
