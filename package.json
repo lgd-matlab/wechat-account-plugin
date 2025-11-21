@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-wewe-rss",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"description": "WeChat public account RSS subscription plugin for Obsidian",
 	"main": "main.js",
 	"scripts": {

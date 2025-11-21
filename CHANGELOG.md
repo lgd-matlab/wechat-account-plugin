@@ -7,22 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-11-21
+
+### Added
+- **Database Backup System**: Automatic and manual database backups
+  - Configurable retention period (default: 7 days)
+  - Backup before initialization and sync operations
+  - Easy restore from backup functionality
+- **Database Health Monitoring**: Proactive corruption detection and recovery
+  - Comprehensive health checks (integrity, schema, constraints)
+  - Interactive recovery modal with multiple recovery options
+  - WAL (Write-Ahead Logging) mode for better data integrity
+- **AI-Powered Article Summarization**: Generate daily summaries of articles
+  - Multi-provider support: OpenAI, Google Gemini, Anthropic Claude, DeepSeek, Zhipu GLM
+  - Generic OpenAI-compatible API support
+  - Dedicated AI Settings tab with provider-specific configurations
+  - Automated daily summarization scheduling
+  - Configurable rate limiting for API requests
+- **Sync Date Filter**: Limit article synchronization by publication date
+  - Default: 5 days (configurable 1-365 days)
+  - Reduces database bloat and improves performance
+  - Consistent filtering for both initial feed addition and regular syncs
+- **Development Tooling**: Comprehensive workflow automation
+  - Claude Code commands for feature specification and planning
+  - OpenSpec integration for change management
+  - Feature-to-code mapping documentation for AI assistance
+
 ### Changed
-- **Sync Days Filter Default**: Changed default sync filter from 30 days to 5 days for new installations
-  - Reduces initial sync overhead and database storage
-  - Better matches user expectations for recent article consumption
-  - Existing installations maintain their configured value
-  - Users can still configure any value between 1-365 days in Settings > Sync Settings
+- **Settings Organization**: Split into General Settings and AI Settings tabs
+- **SQL.js WASM Bundling**: Now bundled inline to prevent runtime loading issues
+- **Sync Days Filter Default**: Changed from 30 days to 5 days for better performance
+- **Error Handling**: Improved error messages and user feedback across all components
 
 ### Fixed
-- **Fixed sync filter inconsistency when adding new feeds**: `fetchHistoricalArticles()` now correctly uses `syncDaysFilter` setting instead of `articleRetentionDays`
-  - Previously when adding a new feed, it would fetch articles based on `articleRetentionDays` (30 days) regardless of `syncDaysFilter` setting
-  - Now consistently uses `syncDaysFilter` for both initial feed addition and regular syncs
-  - This ensures new feeds respect the user's configured sync filter
-- Fixed race condition causing HTTP 500 errors in console after successful WeChat QR code login ([#issue-number])
-  - Added defensive layer to prevent concurrent polling requests after login succeeds
-  - Improved error handling to suppress late-arriving API responses
-  - Added 11 comprehensive unit tests with 100% coverage for the fix
+- **Fixed WASM bundling**: sql-wasm.wasm now inlined in bundle to prevent missing file errors
+- **Fixed sync filter inconsistency**: `fetchHistoricalArticles()` now correctly uses `syncDaysFilter`
+- **Fixed race condition**: HTTP 500 errors after successful QR code login
+- **Fixed authentication errors**: Better handling of 401 errors with re-authentication prompts
+
+### Technical
+- Added 200+ new unit tests (total: 390+ tests, all passing)
+- Enhanced test coverage across all modules (70-100%)
+- Comprehensive documentation updates (FEATURE-CODE-MAPPING.md, module docs)
+- Improved TypeScript type safety with new interfaces and enums
 
 ## [0.1.1] - 2025-11-19
 
