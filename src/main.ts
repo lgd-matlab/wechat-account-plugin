@@ -9,6 +9,7 @@ import { FeedService } from './services/FeedService';
 import { NoteCreator } from './services/NoteCreator';
 import { SyncService } from './services/SyncService';
 import { TaskScheduler } from './services/TaskScheduler';
+import { SummaryService } from './services/SummaryService';
 import { DEFAULT_SETTINGS, WeWeRssSettings } from './types';
 
 export default class WeWeRssPlugin extends Plugin {
@@ -19,6 +20,8 @@ export default class WeWeRssPlugin extends Plugin {
 	noteCreator: NoteCreator;
 	syncService: SyncService;
 	taskScheduler: TaskScheduler;
+	summaryService: SummaryService;
+	logger: any;
 
 	async onload() {
 		console.log('Loading WeWe RSS plugin');
@@ -36,6 +39,14 @@ export default class WeWeRssPlugin extends Plugin {
 		this.noteCreator = new NoteCreator(this);
 		this.syncService = new SyncService(this);
 		this.taskScheduler = new TaskScheduler(this);
+		this.summaryService = new SummaryService(
+			this.databaseService,
+			this.app,
+			this.settings
+		);
+
+		// Initialize logger for UI usage
+		this.logger = console;
 
 		// Start task scheduler
 		this.taskScheduler.start();
@@ -51,6 +62,11 @@ export default class WeWeRssPlugin extends Plugin {
 				},
 				this.settings.syncInterval
 			);
+		}
+
+		// Register automatic summarization task if enabled
+		if (this.settings.summarizationEnabled && this.settings.summarizationAutoRun) {
+			this.scheduleAutomaticSummarization();
 		}
 
 		// Register sidebar view
@@ -115,7 +131,7 @@ export default class WeWeRssPlugin extends Plugin {
 			}
 		});
 
-		// Add settings tab
+		// Add settings tab (includes General and AI settings)
 		this.addSettingTab(new WeWeRssSettingTab(this.app, this));
 
 		// Add status bar item
@@ -171,5 +187,64 @@ export default class WeWeRssPlugin extends Plugin {
 		if (leaf) {
 			workspace.revealLeaf(leaf);
 		}
+	}
+
+	/**
+	 * Schedule automatic daily summarization
+	 */
+	scheduleAutomaticSummarization() {
+		// Unregister existing task if any
+		this.taskScheduler.unregisterTask('daily-summary');
+
+		if (!this.settings.summarizationEnabled || !this.settings.summarizationAutoRun) {
+			return;
+		}
+
+		// Parse schedule time (e.g., "01:00")
+		const timeParts = this.settings.summarizationScheduleTime.split(':');
+		if (timeParts.length !== 2) {
+			console.error('Invalid schedule time format:', this.settings.summarizationScheduleTime);
+			return;
+		}
+
+		const hours = parseInt(timeParts[0]);
+		const minutes = parseInt(timeParts[1]);
+
+		if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+			console.error('Invalid schedule time values:', { hours, minutes });
+			return;
+		}
+
+		// Calculate minutes until next scheduled time
+		const now = new Date();
+		const scheduledTime = new Date();
+		scheduledTime.setHours(hours, minutes, 0, 0);
+
+		// If time has passed today, schedule for tomorrow
+		if (scheduledTime <= now) {
+			scheduledTime.setDate(scheduledTime.getDate() + 1);
+		}
+
+		const minutesUntilRun = Math.floor((scheduledTime.getTime() - now.getTime()) / (60 * 1000));
+
+		console.log(`Scheduling daily summary for ${this.settings.summarizationScheduleTime} (in ${minutesUntilRun} minutes)`);
+
+		// Register task to run every 24 hours (1440 minutes)
+		this.taskScheduler.registerTask(
+			'daily-summary',
+			async () => {
+				try {
+					console.log('Running automatic daily summarization...');
+					const result = await this.summaryService.generateDailySummary();
+					if (result.totalArticles > 0) {
+						new Notice(`Daily summary generated: ${result.summaries.length}/${result.totalArticles} articles`);
+					}
+				} catch (error) {
+					console.error('Automatic summarization failed:', error);
+					new Notice(`Daily summary failed: ${error.message}`);
+				}
+			},
+			1440 // 24 hours in minutes
+		);
 	}
 }
