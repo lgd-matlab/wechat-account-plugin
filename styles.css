@@ -24,7 +24,8 @@
 
 .wewe-rss-stats-bar {
     display: flex;
-    gap: 15px;
+    align-items: center;
+    gap: 0;
     padding: 10px 15px;
     background-color: var(--background-primary-alt);
     border-bottom: 1px solid var(--background-modifier-border);
@@ -35,6 +36,11 @@
 .wewe-rss-stat {
     white-space: nowrap;
     color: var(--text-normal);
+}
+
+.wewe-rss-stat-separator {
+    color: var(--text-faint);
+    white-space: nowrap;
 }
 
 .wewe-rss-stat-warning {
@@ -422,4 +428,79 @@
     background-color: var(--background-secondary);
     border-radius: 6px;
     border-left: 3px solid var(--interactive-accent);
+}
+/* Tab Navigation Styles */
+.wewe-rss-tab-navigation {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--background-modifier-border);
+}
+
+.wewe-rss-tab-button {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    margin-bottom: -10px;
+}
+
+.wewe-rss-tab-button:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+.wewe-rss-tab-button.active {
+    color: var(--interactive-accent);
+    border-bottom-color: var(--interactive-accent);
+}
+
+.wewe-rss-tab-content-title {
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+/* Account Re-authentication Warning Styles */
+.wewe-rss-warning-banner {
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background-color: rgba(255, 145, 0, 0.1);
+    border-left: 3px solid var(--color-orange);
+    border-radius: 4px;
+}
+
+.wewe-rss-warning-banner h4 {
+    margin: 0 0 8px 0;
+    color: var(--color-orange);
+    font-size: 0.95em;
+    font-weight: 600;
+}
+
+.wewe-rss-warning-banner p {
+    margin: 0;
+    font-size: 0.9em;
+    color: var(--text-normal);
+    line-height: 1.5;
+}
+
+/* Outdated Account Styling */
+.setting-item.wewe-rss-account-outdated {
+    background-color: rgba(255, 145, 0, 0.05);
+    border-left: 3px solid var(--color-orange);
+    padding-left: 12px;
+    border-radius: 4px;
+}
+
+.wewe-rss-account-warning {
+    margin-right: 6px;
+    font-size: 1em;
+    cursor: help;
+    display: inline-block;
+    vertical-align: middle;
 }

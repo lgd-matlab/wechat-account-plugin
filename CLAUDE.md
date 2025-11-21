@@ -2,6 +2,11 @@
 
 ## Change Log (Changelog)
 
+### 2025-11-20
+- **Added Feature-Code Mapping Integration**: Created FEATURE-CODE-MAPPING.md for natural language to code location mapping
+- **Enhanced AI Usage Guidelines**: Added critical workflow for understanding user intent through feature mapping
+- Documented requirement to consult FEATURE-CODE-MAPPING.md when users reference features with ambiguous descriptions
+
 ### 2025-11-16 21:32:07
 - **Initial AI context generation**: Created comprehensive documentation structure
 - Documented complete architecture with 390 passing unit tests
@@ -342,11 +347,40 @@ export class ServiceName {
 - Error messages or failing tests
 - What you've already tried
 
+**Understanding User Intent (CRITICAL)**:
+
+⚠️ **当用户有所指代时（如"修改那个按钮"、"调整同步功能"、"改一下设置页面"等），必须遵循以下流程**：
+
+1. **首先查阅 `FEATURE-CODE-MAPPING.md`**
+   - 在映射文档中搜索用户描述的关键词
+   - 匹配"用户描述方式"部分，确定用户指代的具体功能
+   - 获取准确的文件路径、行号和模块信息
+
+2. **确认理解正确**
+   - 向用户确认："您是指 [功能名称] 吗？位于 [UI位置描述]"
+   - 说明将要修改的具体文件和区域
+
+3. **定位代码**
+   - 根据映射文档的"📍 代码位置"定位主文件
+   - 根据"⚡ 修改指引"确定具体的修改方式
+
+**示例流程**:
+```
+用户: "把那个同步按钮改成绿色"
+AI 思考过程:
+  1. 在 FEATURE-CODE-MAPPING.md 中搜索"同步按钮"
+  2. 找到: "文章同步 - 手动同步按钮"
+  3. 确认: "您是指侧边栏右上角的 '⟳ Sync' 按钮吗？"
+  4. 定位: styles.css:190-198 (.wewe-rss-btn-primary)
+  5. 执行: 修改 background-color 属性为绿色
+```
+
 **Before Code Changes**:
-1. Read module-specific CLAUDE.md
-2. Check existing tests for similar patterns
-3. Understand the Repository → Service → UI data flow
-4. Review type definitions in `src/types/`
+1. **优先查阅 `FEATURE-CODE-MAPPING.md`** - 理解用户指代的功能
+2. Read module-specific CLAUDE.md
+3. Check existing tests for similar patterns
+4. Understand the Repository → Service → UI data flow
+5. Review type definitions in `src/types/`
 
 ### Common Tasks
 
@@ -499,6 +533,11 @@ Questions:
 
 ## Related Documentation
 
+### Project Documentation
+- **[FEATURE-CODE-MAPPING.md](./FEATURE-CODE-MAPPING.md)** - Natural language to code location mapping (MUST READ for AI assistants)
+- Module-specific CLAUDE.md files (see Module Index above)
+
+### External Resources
 - [Obsidian Plugin API](https://docs.obsidian.md/Plugins)
 - [sql.js Documentation](https://sql.js.org/)
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/)
@@ -507,6 +546,7 @@ Questions:
 
 ---
 
-**Last Updated**: 2025-11-16 21:32:07
-**Documentation Version**: 1.0.0
-**Plugin Version**: 0.1.0
+**Last Updated**: 2025-11-20
+**Documentation Version**: 1.1.0
+**Plugin Version**: 0.1.1
+**New Features**: Feature-Code Mapping for natural language code navigation

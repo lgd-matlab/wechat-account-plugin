@@ -202,31 +202,111 @@ class AddFeedModal extends Modal {
 
 ### WeWeRssSettingTab
 
-**Purpose**: Plugin configuration interface
+**Purpose**: Main plugin configuration interface (general settings)
 
 **Extends**: `PluginSettingTab`
 
 #### Settings Sections
 
-**1. Sync Settings**
+**1. Account Management**
+- Add/Delete WeChat Reading accounts
+- Account status display
+
+**2. Sync Settings**
 - Auto Sync (toggle)
 - Sync Interval (number input, minutes)
 - Update Delay (number input, seconds)
 - Max Articles Per Feed (number input)
 
-**2. Note Settings**
+**3. Note Settings**
 - Note Folder (text input, path)
 - Note Template (textarea, Markdown template)
 - Add Tags (toggle)
 
-**3. Content Settings**
+**4. Content Settings**
 - Feed Mode (dropdown: summary/fulltext)
 - Enable Clean HTML (toggle)
 
-**4. Advanced**
-- Platform URL (text input)
+**5. Title Filtering**
 - Title Include Patterns (text area, regex list)
 - Title Exclude Patterns (text area, regex list)
+
+**6. API Settings**
+- Platform URL (text input)
+- Max Requests Per Minute (slider)
+
+**7. Database Backup**
+- Auto Backup (toggle)
+- Backup Retention Days (slider)
+- Manual Backup (button)
+
+**8. Advanced**
+- Database Statistics
+- Cleanup Old Articles (button)
+- Cross-reference to AI Settings tab
+
+---
+
+### AISettingsTab
+
+**Purpose**: Dedicated interface for AI summarization configuration
+
+**Extends**: `PluginSettingTab`
+
+**Location**: `src/ui/settings/AISettingsTab.ts` (~220 lines)
+
+#### Settings Sections
+
+**1. Enable/Disable**
+- AI Summarization toggle (shows/hides all other settings)
+
+**2. AI Provider Selection**
+- Provider dropdown (OpenAI, Gemini, Claude, DeepSeek, GLM, Generic)
+- Auto-updates endpoint and model on selection
+
+**3. API Configuration**
+- API Key (password input, secured)
+- API Endpoint (text input, with provider defaults)
+- Model Name (text input, with provider defaults)
+
+**4. Summary Configuration**
+- Summary Folder (text input, path)
+- Auto-run Daily (toggle, integrates with TaskScheduler)
+- Schedule Time (text input, 24-hour format)
+
+**5. Manual Execution**
+- Generate Now button (triggers SummaryService)
+- Last run timestamp display
+
+#### Provider Defaults
+
+```typescript
+// Default API Endpoints
+{
+  'openai': 'https://api.openai.com/v1',
+  'gemini': 'https://generativelanguage.googleapis.com/v1',
+  'claude': 'https://api.anthropic.com/v1',
+  'deepseek': 'https://api.deepseek.com/v1',
+  'glm': 'https://open.bigmodel.cn/api/paas/v4',
+  'generic': 'https://api.openai.com/v1'
+}
+
+// Default Models
+{
+  'openai': 'gpt-3.5-turbo',
+  'gemini': 'gemini-pro',
+  'claude': 'claude-3-haiku-20240307',
+  'deepseek': 'deepseek-chat',
+  'glm': 'glm-4',
+  'generic': 'gpt-3.5-turbo'
+}
+```
+
+#### Integration Points
+
+- **SummaryService**: Calls `generateDailySummary()` for manual generation
+- **TaskScheduler**: Registers/unregisters 'daily-summary' task via `plugin.scheduleAutomaticSummarization()`
+- **Settings**: All AI settings stored in `WeWeRssSettings` interface
 
 #### Pattern
 
@@ -417,7 +497,12 @@ try {
 - `src/ui/views/WeWeRssSidebarView.ts` (~400 lines)
 - `src/ui/modals/AddAccountModal.ts` (~200 lines)
 - `src/ui/modals/AddFeedModal.ts` (~250 lines)
-- `src/ui/settings/WeWeRssSettingTab.ts` (~350 lines)
+- `src/ui/modals/CleanupArticlesModal.ts` (~150 lines)
+- `src/ui/settings/WeWeRssSettingTab.ts` (~560 lines)
+- `src/ui/settings/AISettingsTab.ts` (~220 lines)
+
+### Test Files
+- `src/__tests__/unit/ui/AISettingsTab.test.ts` (14 tests, 100% passing)
 
 ### Styles
 - `styles.css` (minimal custom styles)
@@ -431,4 +516,4 @@ try {
 
 ---
 
-**Last Updated**: 2025-11-16 21:32:07
+**Last Updated**: 2025-11-19 (Added AISettingsTab documentation)
