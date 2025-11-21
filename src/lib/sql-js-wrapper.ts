@@ -1,4 +1,6 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+// @ts-ignore - WASM file is bundled as base64 by esbuild
+import wasmBinary from 'sql.js/dist/sql-wasm.wasm';
 import { logger } from '../utils/logger';
 
 /**
@@ -11,25 +13,22 @@ export class SQLJsWrapper {
 	/**
 	 * Initialize sql.js library
 	 * This loads the WASM file and prepares sql.js for use
+	 *
+	 * @param basePath - Deprecated parameter, kept for backward compatibility
 	 */
-	async initialize(): Promise<void> {
+	async initialize(basePath?: string): Promise<void> {
 		if (this.initialized) {
 			logger.debug('sql.js already initialized');
 			return;
 		}
 
 		try {
-			logger.info('Initializing sql.js...');
+			logger.info('Initializing sql.js with inline WASM...');
 
-			// Initialize sql.js with WASM
-			// Note: The WASM file will be bundled with the plugin
+			// Initialize sql.js with inline WASM binary
+			// The WASM file is bundled into the JavaScript by esbuild as base64
 			this.SQL = await initSqlJs({
-				// In production, this should point to the bundled WASM file
-				// For now, sql.js will try to load from CDN or local
-				locateFile: (file: string) => {
-					// Try to load from plugin directory
-					return `https://sql.js.org/dist/${file}`;
-				}
+				wasmBinary: wasmBinary as ArrayBuffer
 			});
 
 			this.initialized = true;
