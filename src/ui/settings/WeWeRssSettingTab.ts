@@ -4,6 +4,7 @@ import { Account, AccountStatus } from '../../types';
 
 export class WeWeRssSettingTab extends PluginSettingTab {
 	plugin: WeWeRssPlugin;
+	private currentTab: 'general' | 'ai' = 'general';
 
 	constructor(app: App, plugin: WeWeRssPlugin) {
 		super(app, plugin);
@@ -16,6 +17,40 @@ export class WeWeRssSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h2', { text: 'WeWe RSS Settings' });
 
+		// Tab navigation
+		this.addTabNavigation(containerEl);
+
+		// Content based on active tab
+		if (this.currentTab === 'general') {
+			this.displayGeneralSettings(containerEl);
+		} else {
+			this.displayAISettings(containerEl);
+		}
+	}
+
+	private addTabNavigation(containerEl: HTMLElement): void {
+		const navContainer = containerEl.createEl('div', { cls: 'wewe-rss-tab-navigation' });
+
+		const generalBtn = navContainer.createEl('button', {
+			text: 'General',
+			cls: `wewe-rss-tab-button ${this.currentTab === 'general' ? 'active' : ''}`
+		});
+		generalBtn.addEventListener('click', () => {
+			this.currentTab = 'general';
+			this.display();
+		});
+
+		const aiBtn = navContainer.createEl('button', {
+			text: 'AI Settings',
+			cls: `wewe-rss-tab-button ${this.currentTab === 'ai' ? 'active' : ''}`
+		});
+		aiBtn.addEventListener('click', () => {
+			this.currentTab = 'ai';
+			this.display();
+		});
+	}
+
+	private displayGeneralSettings(containerEl: HTMLElement): void {
 		// Info banner
 		const infoBanner = containerEl.createEl('div', { cls: 'wewe-rss-settings-banner' });
 		infoBanner.createEl('p', {
@@ -41,8 +76,235 @@ export class WeWeRssSettingTab extends PluginSettingTab {
 		// API Settings Section
 		this.addApiSettings(containerEl);
 
+		// Database Backup Section
+		this.addDatabaseBackupSettings(containerEl);
+
 		// Advanced Settings Section
 		this.addAdvancedSettings(containerEl);
+	}
+
+	private displayAISettings(containerEl: HTMLElement): void {
+		// Info banner
+		const infoBanner = containerEl.createEl('div', { cls: 'wewe-rss-settings-banner' });
+		infoBanner.createEl('p', {
+			text: 'Configure AI-powered summarization for your WeChat articles.',
+			cls: 'wewe-rss-settings-description'
+		});
+
+		// AI Summarization Settings
+		this.addSummarizationSettings(containerEl);
+	}
+
+	private addSummarizationSettings(containerEl: HTMLElement) {
+		containerEl.createEl('h3', { text: 'AI Summarization' });
+
+		// Enable toggle
+		new Setting(containerEl)
+			.setName('Enable AI Summarization')
+			.setDesc('Generate daily summaries of articles using AI')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.summarizationEnabled)
+				.onChange(async (value) => {
+					this.plugin.settings.summarizationEnabled = value;
+					await this.plugin.saveSettings();
+					this.display(); // Refresh to show/hide other settings
+				}));
+
+		// Only show other settings if enabled
+		if (!this.plugin.settings.summarizationEnabled) {
+			return;
+		}
+
+		// Provider selection
+		new Setting(containerEl)
+			.setName('AI Provider')
+			.setDesc('Select the AI service to use for summarization')
+			.addDropdown(dropdown => dropdown
+				.addOption('openai', 'OpenAI')
+				.addOption('gemini', 'Google Gemini')
+				.addOption('claude', 'Anthropic Claude')
+				.addOption('deepseek', 'DeepSeek')
+				.addOption('glm', 'Zhipu GLM')
+				.addOption('generic', 'Generic (OpenAI-compatible)')
+				.setValue(this.plugin.settings.summarizationProvider)
+				.onChange(async (value: any) => {
+					this.plugin.settings.summarizationProvider = value;
+					// Update default endpoint and model
+					this.plugin.settings.summarizationApiEndpoint = this.getDefaultEndpoint(value);
+					this.plugin.settings.summarizationModel = this.getDefaultModel(value);
+					await this.plugin.saveSettings();
+					this.display(); // Refresh for provider-specific settings
+				}));
+
+		// API Key
+		new Setting(containerEl)
+			.setName('API Key')
+			.setDesc('Your API key for the selected provider (kept secure in settings)')
+			.addText(text => {
+				text.setPlaceholder('sk-...')
+					.setValue(this.plugin.settings.summarizationApiKey)
+					.onChange(async (value) => {
+						this.plugin.settings.summarizationApiKey = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.type = 'password';
+			});
+
+		// API Endpoint
+		new Setting(containerEl)
+			.setName('API Endpoint')
+			.setDesc('API endpoint URL (for custom or self-hosted services)')
+			.addText(text => text
+				.setPlaceholder(this.getDefaultEndpoint(this.plugin.settings.summarizationProvider))
+				.setValue(this.plugin.settings.summarizationApiEndpoint)
+				.onChange(async (value) => {
+					this.plugin.settings.summarizationApiEndpoint = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Model selection
+		new Setting(containerEl)
+			.setName('Model')
+			.setDesc('AI model to use (e.g., gpt-3.5-turbo, gemini-pro, claude-3-haiku)')
+			.addText(text => text
+				.setPlaceholder(this.getDefaultModel(this.plugin.settings.summarizationProvider))
+				.setValue(this.plugin.settings.summarizationModel)
+				.onChange(async (value) => {
+					this.plugin.settings.summarizationModel = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Request delay between articles
+		new Setting(containerEl)
+			.setName('Request Delay (seconds)')
+			.setDesc('Delay between article summarization requests to respect API rate limits. ' +
+					'For free tier APIs like MegaLLM, use 10-60 seconds to avoid HTTP 429 errors.')
+			.addText(text => text
+				.setPlaceholder('10')
+				.setValue(String(this.plugin.settings.summarizationRequestDelaySeconds))
+				.onChange(async (value) => {
+					const delay = parseInt(value);
+					if (!isNaN(delay) && delay >= 0 && delay <= 300) {
+						this.plugin.settings.summarizationRequestDelaySeconds = delay;
+						await this.plugin.saveSettings();
+					}
+				}));
+
+		// Summary folder
+		new Setting(containerEl)
+			.setName('Summary Folder')
+			.setDesc('Folder where daily summaries will be saved')
+			.addText(text => text
+				.setPlaceholder('Daily Summaries')
+				.setValue(this.plugin.settings.summarizationFolder)
+				.onChange(async (value) => {
+					this.plugin.settings.summarizationFolder = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Auto-run toggle
+		new Setting(containerEl)
+			.setName('Auto-run Daily')
+			.setDesc('Automatically generate summaries on schedule')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.summarizationAutoRun)
+				.onChange(async (value) => {
+					this.plugin.settings.summarizationAutoRun = value;
+					await this.plugin.saveSettings();
+
+					// Update scheduler
+					if (value && this.plugin.summaryService) {
+						this.plugin.scheduleAutomaticSummarization();
+					} else {
+						this.plugin.taskScheduler.unregisterTask('daily-summary');
+					}
+
+					new Notice(value ? 'Auto-summarization enabled' : 'Auto-summarization disabled');
+				}));
+
+		// Schedule time
+		new Setting(containerEl)
+			.setName('Schedule Time')
+			.setDesc('Time to run automatic summarization (24-hour format, e.g., 01:00)')
+			.addText(text => text
+				.setPlaceholder('01:00')
+				.setValue(this.plugin.settings.summarizationScheduleTime)
+				.onChange(async (value) => {
+					this.plugin.settings.summarizationScheduleTime = value;
+					await this.plugin.saveSettings();
+
+					// Restart scheduler with new time
+					if (this.plugin.settings.summarizationAutoRun && this.plugin.summaryService) {
+						this.plugin.scheduleAutomaticSummarization();
+					}
+				}));
+
+		// Manual trigger button
+		new Setting(containerEl)
+			.setName('Generate Summary')
+			.setDesc('Manually generate a summary for yesterday\'s articles')
+			.addButton(button => button
+				.setButtonText('Generate Now')
+				.setCta()
+				.onClick(async () => {
+					if (!this.plugin.summaryService) {
+						new Notice('Summary service not initialized');
+						return;
+					}
+
+					button.setButtonText('Generating...');
+					button.setDisabled(true);
+
+					try {
+						const result = await this.plugin.summaryService.generateDailySummary();
+						if (result.totalArticles > 0) {
+							new Notice(`Summary created: ${result.summaries.length}/${result.totalArticles} articles summarized`);
+						} else {
+							new Notice('No articles from yesterday to summarize');
+						}
+					} catch (error) {
+						new Notice(`Failed to generate summary: ${error.message}`);
+						this.plugin.logger.error('Summary generation failed:', error);
+					} finally {
+						button.setButtonText('Generate Now');
+						button.setDisabled(false);
+					}
+				}));
+
+		// Last run info
+		if (this.plugin.settings.summarizationLastRun > 0) {
+			const lastRun = new Date(this.plugin.settings.summarizationLastRun);
+			const lastRunEl = containerEl.createEl('div', {
+				cls: 'setting-item-description'
+			});
+			lastRunEl.style.marginTop = '-10px';
+			lastRunEl.style.paddingLeft = '0';
+			lastRunEl.setText(`Last run: ${lastRun.toLocaleString()}`);
+		}
+	}
+
+	private getDefaultEndpoint(provider: string): string {
+		const endpoints: Record<string, string> = {
+			'openai': 'https://api.openai.com/v1',
+			'gemini': 'https://generativelanguage.googleapis.com/v1',
+			'claude': 'https://api.anthropic.com/v1',
+			'deepseek': 'https://api.deepseek.com/v1',
+			'glm': 'https://open.bigmodel.cn/api/paas/v4',
+			'generic': 'https://api.openai.com/v1'
+		};
+		return endpoints[provider] || endpoints['openai'];
+	}
+
+	private getDefaultModel(provider: string): string {
+		const models: Record<string, string> = {
+			'openai': 'gpt-3.5-turbo',
+			'gemini': 'gemini-pro',
+			'claude': 'claude-3-haiku-20240307',
+			'deepseek': 'deepseek-chat',
+			'glm': 'glm-4',
+			'generic': 'gpt-3.5-turbo'
+		};
+		return models[provider] || models['openai'];
 	}
 
 	private addSyncSettings(containerEl: HTMLElement) {
@@ -115,6 +377,31 @@ export class WeWeRssSettingTab extends PluginSettingTab {
 					this.plugin.settings.maxArticlesPerFeed = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('Sync Days Filter')
+			.setDesc('Only sync articles published within the last N days. Older articles will be ignored during sync. (Default: 5 days)')
+			.addText(text => {
+				text
+					.setPlaceholder('5')
+					.setValue(String(this.plugin.settings.syncDaysFilter))
+					.onChange(async (value) => {
+						const numValue = parseInt(value);
+						if (!isNaN(numValue) && numValue >= 1 && numValue <= 365) {
+							this.plugin.settings.syncDaysFilter = numValue;
+							await this.plugin.saveSettings();
+						}
+					});
+				text.inputEl.type = 'number';
+				text.inputEl.min = '1';
+				text.inputEl.max = '365';
+			})
+			.addExtraButton(button => {
+				button
+					.setIcon('calendar')
+					.setTooltip('Days')
+					.extraSettingsEl.createSpan({ text: 'days' });
+			});
 	}
 
 	private addNoteSettings(containerEl: HTMLElement) {
@@ -282,8 +569,101 @@ tags: [wewe-rss, {{feedName}}]
 				}));
 	}
 
+	private addDatabaseBackupSettings(containerEl: HTMLElement) {
+		containerEl.createEl('h3', { text: 'Database Backup' });
+
+		containerEl.createEl('p', {
+			text: 'Configure automatic database backups to protect against data loss.',
+			cls: 'setting-item-description'
+		});
+
+		// Auto-backup toggle
+		new Setting(containerEl)
+			.setName('Automatic Backups')
+			.setDesc('Automatically create database backups before plugin initialization and migrations')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoBackupEnabled)
+				.onChange(async (value) => {
+					this.plugin.settings.autoBackupEnabled = value;
+					await this.plugin.saveSettings();
+					new Notice(`Automatic backups ${value ? 'enabled' : 'disabled'}`);
+				}));
+
+		// Backup retention
+		new Setting(containerEl)
+			.setName('Backup Retention')
+			.setDesc('Number of days to keep old backups (older backups will be deleted automatically)')
+			.addSlider(slider => slider
+				.setLimits(1, 30, 1)
+				.setValue(this.plugin.settings.backupRetentionDays)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.backupRetentionDays = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Backup before sync
+		new Setting(containerEl)
+			.setName('Backup Before Sync')
+			.setDesc('Create backup before each sync operation (provides extra safety but uses more disk space)')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.backupBeforeSync)
+				.onChange(async (value) => {
+					this.plugin.settings.backupBeforeSync = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Manual backup button
+		new Setting(containerEl)
+			.setName('Create Manual Backup')
+			.setDesc('Create a backup of the database right now')
+			.addButton(button => button
+				.setButtonText('Create Backup')
+				.setCta()
+				.onClick(async () => {
+					try {
+						const backupPath = await this.plugin.databaseService.createManualBackup();
+						new Notice(`Backup created successfully: ${backupPath.split('/').pop()}`);
+					} catch (error) {
+						new Notice(`Backup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+					}
+				}));
+
+		// View backups button
+		new Setting(containerEl)
+			.setName('View All Backups')
+			.setDesc('Browse and manage existing database backups')
+			.addButton(button => button
+				.setButtonText('View Backups')
+				.onClick(async () => {
+					try {
+						const backups = await this.plugin.databaseService.backupService.listBackups();
+
+						if (backups.length === 0) {
+							new Notice('No backups found');
+							return;
+						}
+
+						// Show backup list in modal
+						const backupList = backups.map(b =>
+							`${new Date(b.timestamp).toLocaleString()} - ${b.reason} (${this.formatSize(b.size)})`
+						).join('\n');
+
+						new Notice(`Found ${backups.length} backup(s):\n${backupList}`, 10000);
+					} catch (error) {
+						new Notice(`Failed to list backups: ${error instanceof Error ? error.message : 'Unknown error'}`);
+					}
+				}));
+	}
+
 	private addAdvancedSettings(containerEl: HTMLElement) {
 		containerEl.createEl('h3', { text: 'Advanced' });
+
+		// AI Settings notice
+		containerEl.createEl('p', {
+			text: '💡 AI Summarization settings have moved to the "WeWe RSS - AI" tab.',
+			cls: 'setting-item-description'
+		});
 
 		// Database stats
 		const stats = containerEl.createEl('div', { cls: 'wewe-rss-stats-container' });
@@ -358,6 +738,20 @@ tags: [wewe-rss, {{feedName}}]
 		// Get accounts
 		const accounts = this.plugin.databaseService.accounts.findAll();
 
+		// Check for outdated accounts
+		const outdatedAccounts = accounts.filter(a => !this.validateAccountFormat(a));
+
+		// Warning banner if any accounts need re-authentication
+		if (outdatedAccounts.length > 0) {
+			const warningBanner = containerEl.createEl('div', { cls: 'wewe-rss-warning-banner' });
+			warningBanner.createEl('h4', {
+				text: `⚠️ ${outdatedAccounts.length} account(s) need re-authentication`
+			});
+			warningBanner.createEl('p', {
+				text: 'Your account credentials are outdated. To fix this, remove the affected account(s) and add them again by clicking "Add Account" and scanning the QR code.'
+			});
+		}
+
 		// Statistics
 		const activeCount = accounts.filter(a => a.status === AccountStatus.ACTIVE).length;
 		const statsEl = containerEl.createEl('div', { cls: 'wewe-rss-account-stats' });
@@ -378,6 +772,19 @@ tags: [wewe-rss, {{feedName}}]
 				const accountSetting = new Setting(containerEl)
 					.setName(account.name)
 					.setDesc(this.getAccountDescription(account));
+
+				// Check if account needs re-authentication
+				const needsReauth = !this.validateAccountFormat(account);
+				if (needsReauth) {
+					accountSetting.settingEl.addClass('wewe-rss-account-outdated');
+					// Add warning icon before the name
+					const warningIcon = accountSetting.nameEl.createSpan({
+						cls: 'wewe-rss-account-warning'
+					});
+					warningIcon.setText('⚠️');
+					warningIcon.setAttribute('aria-label', 'Needs re-authentication');
+					warningIcon.setAttribute('title', 'This account needs re-authentication');
+				}
 
 				// Status badge
 				const statusBadge = accountSetting.nameEl.createSpan({
@@ -412,6 +819,19 @@ tags: [wewe-rss, {{feedName}}]
 					const { AddAccountModal } = await import('../modals/AddAccountModal');
 					new AddAccountModal(this.app, this.plugin).open();
 				}));
+	}
+
+	/**
+	 * Validate account credential format
+	 * Returns true if account has new JSON format with vid and token
+	 */
+	private validateAccountFormat(account: Account): boolean {
+		try {
+			const credentials = JSON.parse(account.cookie);
+			return !!(credentials.vid && credentials.token);
+		} catch {
+			return false; // Old format or invalid JSON
+		}
 	}
 
 	private getAccountDescription(account: Account): string {
@@ -460,5 +880,14 @@ tags: [wewe-rss, {{feedName}}]
 
 			modal.open();
 		});
+	}
+
+
+	private formatSize(bytes: number): string {
+		if (bytes === 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 	}
 }

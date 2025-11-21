@@ -1,10 +1,14 @@
 import { Database } from 'sql.js';
-import { normalizePath } from 'obsidian';
+import { normalizePath, Notice } from 'obsidian';
 import WeWeRssPlugin from '../../main';
 import { sqlJsWrapper } from '../../lib/sql-js-wrapper';
 import { logger } from '../../utils/logger';
 import { DB_NAME } from '../../utils/constants';
 import { AccountRepository, FeedRepository, ArticleRepository } from './repositories';
+import { DatabaseBackupService } from './DatabaseBackupService';
+import { DatabaseHealthService } from './DatabaseHealthService';
+import { DatabaseRecoveryModal } from '../../ui/modals/DatabaseRecoveryModal';
+import { BackupReason, HealthReport } from '../../types';
 
 /**
  * DatabaseService - SQLite database wrapper using sql.js
@@ -23,6 +27,10 @@ export class DatabaseService {
 	public feeds: FeedRepository;
 	public articles: ArticleRepository;
 
+	// Backup and health services
+	public backupService: DatabaseBackupService;
+	private healthService: DatabaseHealthService | null = null;
+
 	constructor(plugin: WeWeRssPlugin) {
 		this.plugin = plugin;
 		this.dbPath = normalizePath(`${plugin.manifest.dir}/${DB_NAME}`);
@@ -31,6 +39,12 @@ export class DatabaseService {
 		this.accounts = new AccountRepository(this);
 		this.feeds = new FeedRepository(this);
 		this.articles = new ArticleRepository(this);
+
+		// Initialize backup service
+		this.backupService = new DatabaseBackupService(
+			plugin.app,
+			plugin.manifest.dir || ''
+		);
 	}
 
 	/**
@@ -45,8 +59,30 @@ export class DatabaseService {
 		try {
 			logger.info('Initializing database...');
 
-			// Initialize sql.js WASM
-			await sqlJsWrapper.initialize();
+			// Initialize backup service
+			await this.backupService.initialize();
+
+			// Create backup before initialization if enabled
+			if (this.plugin.settings.autoBackupEnabled) {
+				try {
+					const dbExists = await this.plugin.app.vault.adapter.exists(
+						this.dbPath
+					);
+					if (dbExists) {
+						await this.backupService.createBackup(
+							BackupReason.PRE_INITIALIZATION
+						);
+					}
+				} catch (error) {
+					logger.warn(
+						'Failed to create pre-initialization backup (non-critical):',
+						error
+					);
+				}
+			}
+
+			// Initialize sql.js WASM with plugin directory path
+			await sqlJsWrapper.initialize(this.plugin.manifest.dir);
 
 			// Try to load existing database
 			const dbExists = await this.plugin.app.vault.adapter.exists(this.dbPath);
@@ -54,11 +90,33 @@ export class DatabaseService {
 			if (dbExists) {
 				logger.info('Loading existing database from:', this.dbPath);
 				const dbData = await this.plugin.app.vault.adapter.readBinary(this.dbPath);
-				this.db = sqlJsWrapper.loadDatabase(new Uint8Array(dbData));
-				logger.info('Database loaded successfully');
+
+				try {
+					this.db = sqlJsWrapper.loadDatabase(new Uint8Array(dbData));
+
+					// Enable WAL mode for better concurrency and corruption prevention
+					this.enableWALMode();
+
+					logger.info('Database loaded successfully');
+				} catch (loadError) {
+					logger.error('Database corrupted, showing recovery modal:', loadError);
+
+					// Show recovery modal
+					await this.showRecoveryModal(
+						loadError instanceof Error
+							? loadError.message
+							: 'Unknown database error'
+					);
+
+					// After recovery, throw error to prevent initialization
+					throw new Error('Database recovery required. Please restart the plugin.');
+				}
 			} else {
 				logger.info('Creating new database');
 				this.db = sqlJsWrapper.createDatabase();
+
+				// Enable WAL mode
+				this.enableWALMode();
 
 				// Run initial migrations
 				await this.runMigrations();
@@ -68,15 +126,103 @@ export class DatabaseService {
 				logger.info('New database created and saved');
 			}
 
+			// Initialize health service
+			this.healthService = new DatabaseHealthService(this.db);
+
+			// Perform health check
+			await this.performHealthCheck();
+
 			this.initialized = true;
 
 			// Setup auto-save every 30 seconds
 			this.setupAutoSave();
 
+			// Clean old backups based on retention policy
+			if (this.plugin.settings.autoBackupEnabled) {
+				await this.backupService
+					.cleanOldBackups(this.plugin.settings.backupRetentionDays)
+					.catch((error) =>
+						logger.warn('Failed to clean old backups:', error)
+					);
+			}
 		} catch (error) {
 			logger.error('Failed to initialize database:', error);
 			throw error;
 		}
+	}
+
+	/**
+	 * Enable Write-Ahead Logging mode for better concurrency and corruption prevention
+	 */
+	private enableWALMode(): void {
+		if (!this.db) {
+			return;
+		}
+
+		try {
+			// Enable WAL mode
+			this.db.run('PRAGMA journal_mode=WAL');
+
+			// Set synchronous mode to NORMAL (good balance between safety and performance)
+			this.db.run('PRAGMA synchronous=NORMAL');
+
+			// Enable foreign key constraints
+			this.db.run('PRAGMA foreign_keys=ON');
+
+			logger.info('WAL mode enabled for database');
+		} catch (error) {
+			logger.warn('Failed to enable WAL mode (non-critical):', error);
+		}
+	}
+
+	/**
+	 * Perform database health check
+	 */
+	private async performHealthCheck(): Promise<void> {
+		if (!this.healthService) {
+			return;
+		}
+
+		try {
+			const report = await this.healthService.performHealthCheck();
+
+			if (!report.integrity.isHealthy || !report.schema.isHealthy) {
+				logger.error('Database health check failed:', {
+					integrityErrors: report.integrity.errors,
+					schemaWarnings: report.schema.warnings,
+					recommendations: report.recommendations,
+				});
+
+				// Show error to user
+				// TODO: Show DatabaseRecoveryModal
+			} else {
+				logger.debug('Database health check passed');
+			}
+		} catch (error) {
+			logger.warn('Health check failed (non-critical):', error);
+		}
+	}
+
+	/**
+	 * Get database health status
+	 *
+	 * @returns Health report or null if not initialized
+	 */
+	async getHealthStatus(): Promise<HealthReport | null> {
+		if (!this.healthService) {
+			return null;
+		}
+
+		return this.healthService.performHealthCheck();
+	}
+
+	/**
+	 * Create manual backup
+	 *
+	 * @returns Path to backup file
+	 */
+	async createManualBackup(): Promise<string> {
+		return this.backupService.createBackup(BackupReason.MANUAL);
 	}
 
 	/**
@@ -341,5 +487,55 @@ export class DatabaseService {
 	 */
 	rollback(): void {
 		this.execute('ROLLBACK');
+	}
+
+	/**
+	 * Show database recovery modal to user
+	 *
+	 * @param errorMessage Error message to display
+	 */
+	private async showRecoveryModal(errorMessage: string): Promise<void> {
+		return new Promise((resolve) => {
+			const modal = new DatabaseRecoveryModal(
+				this.plugin.app,
+				this.backupService,
+				errorMessage,
+				async (backupPath: string | null) => {
+					if (backupPath === null) {
+						// User chose to reset database
+						try {
+							const adapter = this.plugin.app.vault.adapter;
+							const dbExists = await adapter.exists(this.dbPath);
+
+							if (dbExists) {
+								await adapter.remove(this.dbPath);
+								logger.info('Database file deleted for reset');
+							}
+
+							new Notice(
+								'Database reset complete. Please reload the plugin.',
+								5000
+							);
+						} catch (error) {
+							logger.error('Failed to reset database:', error);
+							new Notice(
+								`Reset failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+								8000
+							);
+						}
+					} else {
+						// User restored from backup
+						new Notice(
+							'Database restored. Please reload the plugin.',
+							5000
+						);
+					}
+
+					resolve();
+				}
+			);
+
+			modal.open();
+		});
 	}
 }
