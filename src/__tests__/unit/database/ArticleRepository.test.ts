@@ -725,6 +725,200 @@ describe('ArticleRepository', () => {
 		});
 	});
 
+	describe('findByDateRange', () => {
+		it('should find articles within date range', () => {
+			const yesterday = Date.now() - 24 * 60 * 60 * 1000;
+			const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000;
+			const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+
+			const article1 = createSampleArticle({
+				id: 1,
+				url: 'http://article1.com',
+				published_at: yesterday,
+			});
+			const article2 = createSampleArticle({
+				id: 2,
+				url: 'http://article2.com',
+				published_at: twoDaysAgo,
+			});
+			const article3 = createSampleArticle({
+				id: 3,
+				url: 'http://article3.com',
+				published_at: threeDaysAgo,
+			});
+
+			insertArticle(db, article1);
+			insertArticle(db, article2);
+			insertArticle(db, article3);
+
+			// Find articles from 2.5 days ago to now
+			const startTime = Date.now() - 2.5 * 24 * 60 * 60 * 1000;
+			const endTime = Date.now();
+
+			const articles = repository.findByDateRange(startTime, endTime);
+
+			expect(articles).toHaveLength(2);
+			expect(articles[0].id).toBe(1); // Yesterday (most recent first)
+			expect(articles[1].id).toBe(2); // Two days ago
+		});
+
+		it('should return empty array if no articles in range', () => {
+			const today = Date.now();
+			const fourDaysAgo = Date.now() - 4 * 24 * 60 * 60 * 1000;
+
+			const article = createSampleArticle({
+				published_at: fourDaysAgo,
+			});
+
+			insertArticle(db, article);
+
+			// Look for articles in last 2 days
+			const startTime = Date.now() - 2 * 24 * 60 * 60 * 1000;
+			const endTime = Date.now();
+
+			const articles = repository.findByDateRange(startTime, endTime);
+
+			expect(articles).toEqual([]);
+		});
+
+		it('should use inclusive start and exclusive end', () => {
+			const exactTime = Date.now() - 24 * 60 * 60 * 1000;
+
+			const articleAtStart = createSampleArticle({
+				id: 1,
+				url: 'http://start.com',
+				published_at: exactTime,
+			});
+			const articleAtEnd = createSampleArticle({
+				id: 2,
+				url: 'http://end.com',
+				published_at: exactTime + 1000, // 1 second later
+			});
+
+			insertArticle(db, articleAtStart);
+			insertArticle(db, articleAtEnd);
+
+			// Range: [exactTime, exactTime + 1000)
+			const articles = repository.findByDateRange(exactTime, exactTime + 1000);
+
+			// Should include start, exclude end
+			expect(articles).toHaveLength(1);
+			expect(articles[0].id).toBe(1);
+		});
+
+		it('should return articles ordered by published_at DESC', () => {
+			const times = [
+				Date.now() - 1 * 60 * 60 * 1000, // 1 hour ago
+				Date.now() - 2 * 60 * 60 * 1000, // 2 hours ago
+				Date.now() - 3 * 60 * 60 * 1000, // 3 hours ago
+			];
+
+			// Insert in random order
+			insertArticle(db, createSampleArticle({ url: 'http://2.com', published_at: times[1] }));
+			insertArticle(db, createSampleArticle({ url: 'http://3.com', published_at: times[2] }));
+			insertArticle(db, createSampleArticle({ url: 'http://1.com', published_at: times[0] }));
+
+			const startTime = Date.now() - 4 * 60 * 60 * 1000;
+			const endTime = Date.now();
+
+			const articles = repository.findByDateRange(startTime, endTime);
+
+			expect(articles).toHaveLength(3);
+			// Verify ordering by published_at (most recent first)
+			expect(articles[0].publishedAt).toBe(times[0]); // 1 hour ago (most recent)
+			expect(articles[1].publishedAt).toBe(times[1]); // 2 hours ago
+			expect(articles[2].publishedAt).toBe(times[2]); // 3 hours ago (oldest)
+		});
+
+		it('should handle exactly 24-hour range (yesterday)', () => {
+			const now = new Date();
+			const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+			const yesterdayMidnight = todayMidnight - 24 * 60 * 60 * 1000;
+
+			const yesterdayArticle = createSampleArticle({
+				id: 1,
+				url: 'http://yesterday.com',
+				published_at: yesterdayMidnight + 12 * 60 * 60 * 1000, // Noon yesterday
+			});
+			const todayArticle = createSampleArticle({
+				id: 2,
+				url: 'http://today.com',
+				published_at: todayMidnight + 1000, // Just after midnight today
+			});
+
+			insertArticle(db, yesterdayArticle);
+			insertArticle(db, todayArticle);
+
+			// Query yesterday's articles
+			const articles = repository.findByDateRange(yesterdayMidnight, todayMidnight);
+
+			expect(articles).toHaveLength(1);
+			expect(articles[0].id).toBe(1);
+		});
+
+		it('should handle edge case with zero-length range', () => {
+			const exactTime = Date.now();
+
+			const article = createSampleArticle({
+				published_at: exactTime,
+			});
+
+			insertArticle(db, article);
+
+			// Zero-length range
+			const articles = repository.findByDateRange(exactTime, exactTime);
+
+			expect(articles).toEqual([]);
+		});
+
+		it('should handle future date range', () => {
+			const article = createSampleArticle({
+				published_at: Date.now(),
+			});
+
+			insertArticle(db, article);
+
+			// Query future dates
+			const startTime = Date.now() + 1 * 24 * 60 * 60 * 1000;
+			const endTime = Date.now() + 2 * 24 * 60 * 60 * 1000;
+
+			const articles = repository.findByDateRange(startTime, endTime);
+
+			expect(articles).toEqual([]);
+		});
+
+		it('should map database rows to Article objects correctly', () => {
+			const article = createSampleArticle({
+				id: 1,
+				title: 'Test Title',
+				content: 'Test Content',
+				content_html: '<p>Test HTML</p>',
+				url: 'http://test.com',
+				published_at: Date.now() - 60 * 1000,
+				synced: 1,
+				note_id: 'Test Note.md',
+			});
+
+			insertArticle(db, article);
+
+			const startTime = Date.now() - 2 * 60 * 1000;
+			const endTime = Date.now();
+
+			const articles = repository.findByDateRange(startTime, endTime);
+
+			expect(articles).toHaveLength(1);
+			expect(articles[0]).toMatchObject({
+				id: 1,
+				title: 'Test Title',
+				content: 'Test Content',
+				contentHtml: '<p>Test HTML</p>',
+				url: 'http://test.com',
+				synced: true,
+				noteId: 'Test Note.md',
+			});
+		});
+	});
+
 	describe('getStats', () => {
 		it('should return article statistics', () => {
 			insertArticle(db, sampleArticle1); // feed1, unsynced

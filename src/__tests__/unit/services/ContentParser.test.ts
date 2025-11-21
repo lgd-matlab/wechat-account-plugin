@@ -361,4 +361,178 @@ describe('ContentParser', () => {
 			expect(result.markdown).toContain('Content');
 		});
 	});
+
+	describe('WeChat content extraction', () => {
+		it('should extract content from content_noencode with JsDecode function', () => {
+			// Use String.raw to prevent escape sequence interpretation
+			const wechatHtml = String.raw`
+				<html>
+					<script>
+						var content_noencode: JsDecode('\x3cp\x3eThis is a test\x3c/p\x3e')
+					</script>
+				</html>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('This is a test');
+			expect(result.markdown).not.toContain('\\x3c');
+		});
+
+		it('should extract content from content_noencode with double quotes', () => {
+			const wechatHtml = String.raw`
+				<html>
+					<script>
+						var content_noencode: "\x3cp\x3eThis is a test\x3c/p\x3e"
+					</script>
+				</html>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('This is a test');
+			expect(result.markdown).not.toContain('\\x3c');
+		});
+
+		it('should extract content from content_noencode with single quotes', () => {
+			const wechatHtml = String.raw`
+				<script>
+					var content_noencode: '\x3ch1\x3eTitle\x3c/h1\x3e'
+				</script>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('Title');
+		});
+
+		it('should decode all JavaScript escape sequences', () => {
+			const wechatHtml = String.raw`
+				<script>
+					content_noencode: JsDecode("\x3cp\x3eTest \x22quoted\x22 text\x3c/p\x3e")
+				</script>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('quoted');
+			expect(result.markdown).not.toContain('\\x22');
+		});
+
+		it('should handle ampersands in WeChat content', () => {
+			const wechatHtml = String.raw`
+				<script>
+					content_noencode: JsDecode("\x3cp\x3eRocks \x26 Minerals\x3c/p\x3e")
+				</script>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('Rocks & Minerals');
+		});
+
+		it('should handle newlines in WeChat content', () => {
+			const wechatHtml = String.raw`
+				<script>
+					content_noencode: JsDecode("\x3cp\x3eLine 1\x0aLine 2\x3c/p\x3e")
+				</script>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('Line 1');
+			expect(result.markdown).toContain('Line 2');
+		});
+
+		it('should handle carriage returns in WeChat content', () => {
+			const wechatHtml = String.raw`
+				<script>
+					content_noencode: JsDecode("\x3cp\x3eText\x0d\x0aNew line\x3c/p\x3e")
+				</script>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('Text');
+			expect(result.markdown).toContain('New line');
+		});
+
+		it('should handle backslashes in WeChat content', () => {
+			const wechatHtml = String.raw`
+				<script>
+					content_noencode: JsDecode("\x3cp\x3eFile: C:\x5cUsers\x5ctest\x3c/p\x3e")
+				</script>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('C:\\Users\\test');
+		});
+
+		it('should convert decoded HTML to markdown', () => {
+			const wechatHtml = String.raw`
+				<script>
+					content_noencode: JsDecode("\x3ch1\x3eHeading\x3c/h1\x3e\x3cp\x3eParagraph\x3c/p\x3e")
+				</script>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('# Heading');
+			expect(result.markdown).toContain('Paragraph');
+		});
+
+		it('should fallback to original HTML when content_noencode not found', () => {
+			const regularHtml = '<p>Regular HTML</p>';
+
+			const result = parser.parseContent(regularHtml);
+
+			expect(result.markdown).toContain('Regular HTML');
+		});
+
+		it('should handle extraction errors gracefully', () => {
+			const malformedHtml = String.raw`
+				<script>
+					content_noencode: "unclosed quote
+				</script>
+			`;
+
+			const result = parser.parseContent(malformedHtml);
+
+			// Should return something (fallback behavior)
+			expect(result.markdown).toBeDefined();
+			expect(result.cleanHtml).toBeDefined();
+		});
+
+		it('should handle complex WeChat article with multiple paragraphs', () => {
+			const wechatHtml = String.raw`
+				<html>
+					<head><title>Article</title></head>
+					<body>
+						<script>
+							var content_noencode: JsDecode("\x3ch1\x3eTitle\x3c/h1\x3e\x3cp\x3ePara 1\x3c/p\x3e\x3cp\x3ePara 2\x3c/p\x3e")
+						</script>
+					</body>
+				</html>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain('# Title');
+			expect(result.markdown).toContain('Para 1');
+			expect(result.markdown).toContain('Para 2');
+		});
+
+		it('should handle single quotes in escaped content', () => {
+			const wechatHtml = String.raw`
+				<script>
+					content_noencode: JsDecode("\x3cp\x3eIt\x27s a test\x3c/p\x3e")
+				</script>
+			`;
+
+			const result = parser.parseContent(wechatHtml);
+
+			expect(result.markdown).toContain("It's a test");
+		});
+	});
 });

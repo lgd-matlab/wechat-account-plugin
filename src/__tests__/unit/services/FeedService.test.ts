@@ -47,6 +47,7 @@ describe('FeedService', () => {
 		// Mock API client
 		mockApiClient = {
 			getMpInfo: jest.fn(),
+			getMpInfoWithAuth: jest.fn(),
 			getMpArticles: jest.fn(),
 			setPlatformUrl: jest.fn(),
 		};
@@ -78,7 +79,7 @@ describe('FeedService', () => {
 
 	describe('subscribeFeed', () => {
 		it('should subscribe to a new feed successfully', async () => {
-			mockApiClient.getMpInfo.mockResolvedValue(mockGetMpInfoResponse);
+			mockApiClient.getMpInfoWithAuth.mockResolvedValue(mockGetMpInfoResponse);
 			mockDatabaseService.feeds.findByFeedId.mockReturnValue(null);
 			mockAccountService.getAvailableAccount.mockResolvedValue(sampleAccount1);
 			mockDatabaseService.feeds.create.mockResolvedValue(sampleFeed1);
@@ -87,7 +88,11 @@ describe('FeedService', () => {
 			const result = await feedService.subscribeFeed('https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=test');
 
 			expect(result).toEqual(sampleFeed1);
-			expect(mockApiClient.getMpInfo).toHaveBeenCalledWith('https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=test');
+			expect(mockApiClient.getMpInfoWithAuth).toHaveBeenCalledWith(
+				'https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=test',
+				'12345678',
+				'test-token-abc123'
+			);
 			expect(mockDatabaseService.feeds.findByFeedId).toHaveBeenCalledWith(mockMpInfo1.id);
 			expect(mockAccountService.getAvailableAccount).toHaveBeenCalled();
 			expect(mockDatabaseService.feeds.create).toHaveBeenCalledWith(
@@ -99,8 +104,9 @@ describe('FeedService', () => {
 		});
 
 		it('should return existing feed if already subscribed', async () => {
-			mockApiClient.getMpInfo.mockResolvedValue(mockGetMpInfoResponse);
+			mockApiClient.getMpInfoWithAuth.mockResolvedValue(mockGetMpInfoResponse);
 			mockDatabaseService.feeds.findByFeedId.mockReturnValue(sampleFeed1);
+			mockAccountService.getAvailableAccount.mockResolvedValue(sampleAccount1);
 
 			const result = await feedService.subscribeFeed('https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=test');
 
@@ -109,23 +115,23 @@ describe('FeedService', () => {
 		});
 
 		it('should throw error if no MP info returned', async () => {
-			mockApiClient.getMpInfo.mockResolvedValue([]);
+			mockApiClient.getMpInfoWithAuth.mockResolvedValue([]);
+			mockAccountService.getAvailableAccount.mockResolvedValue(sampleAccount1);
 
 			await expect(feedService.subscribeFeed('https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=test'))
 				.rejects.toThrow('Failed to get MP info from share link');
 		});
 
 		it('should throw error if no available accounts', async () => {
-			mockApiClient.getMpInfo.mockResolvedValue(mockGetMpInfoResponse);
-			mockDatabaseService.feeds.findByFeedId.mockReturnValue(null);
 			mockAccountService.getAvailableAccount.mockResolvedValue(null);
 
 			await expect(feedService.subscribeFeed('https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=test'))
-				.rejects.toThrow('No available accounts to subscribe to feed');
+				.rejects.toThrow('Please add a WeChat account before subscribing to feeds');
 		});
 
 		it('should handle API errors', async () => {
-			mockApiClient.getMpInfo.mockRejectedValue(new Error('API error'));
+			mockApiClient.getMpInfoWithAuth.mockRejectedValue(new Error('API error'));
+			mockAccountService.getAvailableAccount.mockResolvedValue(sampleAccount1);
 
 			await expect(feedService.subscribeFeed('https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=test'))
 				.rejects.toThrow('API error');
@@ -144,8 +150,8 @@ describe('FeedService', () => {
 			expect(result).toBe(mockGetMpArticlesResponsePage1.length);
 			expect(mockApiClient.getMpArticles).toHaveBeenCalledWith(
 				sampleFeed1.feedId,
-				sampleAccount1.id!.toString(),
-				sampleAccount1.cookie,
+				'12345678',
+				'test-token-abc123',
 				1
 			);
 			expect(mockDatabaseService.articles.createBatch).toHaveBeenCalledWith(
@@ -226,8 +232,8 @@ describe('FeedService', () => {
 			expect(result).toBe(mockGetMpArticlesResponsePage1.length);
 			expect(mockApiClient.getMpArticles).toHaveBeenCalledWith(
 				sampleFeed1.feedId,
-				sampleAccount1.id!.toString(),
-				sampleAccount1.cookie,
+				'12345678',
+				'test-token-abc123',
 				1
 			);
 			expect(mockDatabaseService.feeds.updateLastSync).toHaveBeenCalledWith(sampleFeed1.id);
@@ -427,6 +433,60 @@ describe('FeedService', () => {
 			feedService.setPlatformUrl('https://new-platform.com');
 
 			expect(mockApiClient.setPlatformUrl).toHaveBeenCalledWith('https://new-platform.com');
+		});
+	});
+
+	describe('parseCredentials', () => {
+		it('should parse new JSON format with vid and token', () => {
+			const cookie = JSON.stringify({ vid: 12345, token: 'abc123' });
+			const account = { ...sampleAccount1, cookie };
+
+			// Access private method via any cast for testing
+			const result = (feedService as any).parseCredentials(cookie);
+
+			expect(result).toEqual({ vid: 12345, token: 'abc123' });
+		});
+
+		it('should throw ACCOUNT_NEEDS_REAUTH for old token-only format', () => {
+			const cookie = 'old-token-string';
+
+			expect(() => (feedService as any).parseCredentials(cookie))
+				.toThrow('ACCOUNT_NEEDS_REAUTH');
+		});
+
+		it('should throw ACCOUNT_NEEDS_REAUTH for invalid JSON', () => {
+			const cookie = '{invalid json}';
+
+			expect(() => (feedService as any).parseCredentials(cookie))
+				.toThrow('ACCOUNT_NEEDS_REAUTH');
+		});
+
+		it('should throw ACCOUNT_NEEDS_REAUTH for JSON missing vid', () => {
+			const cookie = JSON.stringify({ token: 'abc123' });
+
+			expect(() => (feedService as any).parseCredentials(cookie))
+				.toThrow('ACCOUNT_NEEDS_REAUTH');
+		});
+
+		it('should throw ACCOUNT_NEEDS_REAUTH for JSON missing token', () => {
+			const cookie = JSON.stringify({ vid: 12345 });
+
+			expect(() => (feedService as any).parseCredentials(cookie))
+				.toThrow('ACCOUNT_NEEDS_REAUTH');
+		});
+
+		it('should throw ACCOUNT_NEEDS_REAUTH for empty JSON object', () => {
+			const cookie = JSON.stringify({});
+
+			expect(() => (feedService as any).parseCredentials(cookie))
+				.toThrow('ACCOUNT_NEEDS_REAUTH');
+		});
+
+		it('should throw ACCOUNT_NEEDS_REAUTH for null values', () => {
+			const cookie = JSON.stringify({ vid: null, token: null });
+
+			expect(() => (feedService as any).parseCredentials(cookie))
+				.toThrow('ACCOUNT_NEEDS_REAUTH');
 		});
 	});
 });

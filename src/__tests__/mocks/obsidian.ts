@@ -206,6 +206,9 @@ export class MockPlugin {
 	}
 }
 
+// Export Modal as an alias for MockModal for compatibility
+export const Modal = MockModal;
+
 // Mock requestUrl for API calls
 export const mockRequestUrl = jest.fn();
 export const requestUrl = mockRequestUrl;
